@@ -25,7 +25,6 @@ nella stessa cartella). Non salvare mai le API key nel codice o in git.
 """
 
 import argparse
-import base64
 import os
 import sys
 import time
@@ -94,10 +93,9 @@ def create_subdomain(subdomain, dry_run=False):
     params = {
         "domain": subdomain,
         "rootdomain": ROOT_DOMAIN,
-        # Il documento indica "rimuovere .leandroestrella.com dal Document Root":
-        # qui equivale a puntare la document root alla cartella del sottodominio
-        # invece che a public_html/<rootdomain>/<subdomain>.
-        "dir": f"public_html/{subdomain}",
+        # Document root un livello sopra public_html (~/<subdomain>, non
+        # ~/public_html/<subdomain>) — confermato dal setup reale dell'account.
+        "dir": subdomain,
     }
     log("cPanel", f"Creazione sottodominio {subdomain}.{ROOT_DOMAIN} -> {params['dir']}")
     if dry_run:
@@ -332,7 +330,7 @@ def force_https_redirect(subdomain, dry_run=False):
         {"CPANEL_HOST": CPANEL_HOST, "CPANEL_USER": CPANEL_USER, "CPANEL_API_TOKEN": CPANEL_API_TOKEN},
         ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
     )
-    doc_root = f"public_html/{subdomain}"
+    doc_root = subdomain
     log("HTTPS redirect", f"Scrittura regole di redirect in {doc_root}/.htaccess")
     if dry_run:
         log("HTTPS redirect", f"[dry-run] Aggiungerei a {doc_root}/.htaccess:\n{HTACCESS_SNIPPET}")
@@ -349,7 +347,7 @@ def force_https_redirect(subdomain, dry_run=False):
     if resp.ok:
         data = resp.json()
         if data.get("status"):
-            existing = base64.b64decode(data["data"].get("content", "")).decode("utf-8", "ignore")
+            existing = data["data"].get("content", "")
 
     if "force-https" in existing:
         log("HTTPS redirect", ".htaccess contiene già il blocco force-https, nessuna modifica.")
