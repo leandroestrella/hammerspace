@@ -10,7 +10,7 @@ en la animación, los cómics y los videojuegos, **hammerspace** es ese almacén
 extradimensional imaginario del que un personaje saca exactamente la
 herramienta que necesita, de la nada, justo en el momento en que la necesita —
 [wikipedia cuenta la historia
-completa](https://en.wikipedia.org/wiki/Hammerspace), desde los gags de los
+completa](https://es.wikipedia.org/wiki/Hammerspace), desde los gags de los
 looney tunes hasta los fandoms del anime (*urusei yatsura*, *ranma ½*) que
 acuñaron el término. [tv
 tropes](https://tvtropes.org/pmwiki/pmwiki.php/Main/Hammerspace) tiene un
