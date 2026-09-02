@@ -1,4 +1,4 @@
-name: Create/delete subdomain
+name: Create subdomain
 
 on:
   workflow_dispatch:
@@ -7,21 +7,6 @@ on:
         description: "Nome del sottodominio (es. 'lab')"
         required: true
         type: string
-      delete:
-        description: "Rimuovi il sottodominio invece di crearlo"
-        required: false
-        type: boolean
-        default: false
-      with_files:
-        description: "Solo con delete: cancella anche la cartella (nel cestino ~/.trash)"
-        required: false
-        type: boolean
-        default: false
-      purge:
-        description: "Solo con with_files: cancellazione DEFINITIVA invece del cestino"
-        required: false
-        type: boolean
-        default: false
       dry_run:
         description: "Mostra le chiamate senza eseguirle"
         required: false
@@ -47,7 +32,7 @@ on:
 permissions: {}
 
 jobs:
-  run:
+  create:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,37 +43,33 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Run create_subdomain.py
+      - name: Crea il sottodominio
         env:
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
           CPANEL_USER: ${{ secrets.CPANEL_USER }}
           CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
           ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
+          # WHM: serve solo ad AutoSSL, saltato di default finché non c'è il token.
           WHM_HOST: ${{ secrets.WHM_HOST }}
           WHM_USER: ${{ secrets.WHM_USER }}
           WHM_API_TOKEN: ${{ secrets.WHM_API_TOKEN }}
+          # Namecheap: serve solo con with_dns_api.
           NAMECHEAP_API_USER: ${{ secrets.NAMECHEAP_API_USER }}
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
           NAMECHEAP_USERNAME: ${{ secrets.NAMECHEAP_USERNAME }}
           NAMECHEAP_CLIENT_IP: ${{ secrets.NAMECHEAP_CLIENT_IP }}
-          # L'input passa dall'ambiente, NON interpolato dentro lo script:
-          # "${{ inputs.subdomain }}" verrebbe incollato prima che bash lo
-          # parsi, e un valore tipo  x") ; comando ; ARGS=("y  eseguirebbe
-          # codice arbitrario con tutti i secrets qui sopra nell'ambiente.
+          # Gli input passano dall'ambiente, NON interpolati dentro lo script:
+          # "${{ inputs.subdomain }}" verrebbe incollato prima che bash lo parsi,
+          # e un valore tipo  x") ; comando ; ARGS=("y  eseguirebbe codice
+          # arbitrario con tutti i secrets qui sopra nell'ambiente.
           SUBDOMAIN: ${{ inputs.subdomain }}
-          DELETE: ${{ inputs.delete }}
-          WITH_FILES: ${{ inputs.with_files }}
-          PURGE: ${{ inputs.purge }}
           DRY_RUN: ${{ inputs.dry_run }}
           WITH_DNS_API: ${{ inputs.with_dns_api }}
           SKIP_AUTOSSL: ${{ inputs.skip_autossl }}
           SKIP_HTTPS_REDIRECT: ${{ inputs.skip_https_redirect }}
         run: |
           ARGS=("$SUBDOMAIN")
-          [ "$DELETE" = "true" ] && ARGS+=(--delete)
-          [ "$WITH_FILES" = "true" ] && ARGS+=(--with-files)
-          [ "$PURGE" = "true" ] && ARGS+=(--purge)
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
           [ "$WITH_DNS_API" = "true" ] && ARGS+=(--with-dns-api)
           [ "$SKIP_AUTOSSL" = "true" ] && ARGS+=(--skip-autossl)

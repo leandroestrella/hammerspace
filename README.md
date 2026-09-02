@@ -54,3 +54,13 @@ workflows (`.github/workflows/`), so they can run without needing to have
 this repo checked out locally. Configure the required secrets under
 **Settings → Secrets and variables → Actions**, then trigger a run from the
 **Actions** tab (`Run workflow`).
+
+| Workflow | What it does |
+| --- | --- |
+| **Create subdomain** | Creates the subdomain, with optional DNS record, AutoSSL, and forced HTTPS redirect. |
+| **Delete subdomain** | Removes the subdomain, optionally its document root too. Requires retyping the name to confirm. |
+
+Creating and deleting are separate workflows on purpose: a destructive run
+should never be one mis-clicked checkbox away from a routine one. Each
+workflow also receives only the secrets it actually needs — deletion never
+sees the DNS or WHM credentials.

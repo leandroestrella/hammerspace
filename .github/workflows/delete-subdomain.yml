@@ -1,0 +1,76 @@
+name: Delete subdomain
+
+on:
+  workflow_dispatch:
+    inputs:
+      subdomain:
+        description: "Nome del sottodominio da rimuovere (es. 'lab')"
+        required: true
+        type: string
+      confirm:
+        description: "Riscrivi qui lo stesso nome per confermare"
+        required: true
+        type: string
+      with_files:
+        description: "Cancella anche la cartella (finisce nel cestino ~/.trash)"
+        required: false
+        type: boolean
+        default: false
+      purge:
+        description: "Solo con with_files: cancellazione DEFINITIVA invece del cestino"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Mostra le chiamate senza eseguirle"
+        required: false
+        type: boolean
+        default: false
+
+# Il job non usa il GITHUB_TOKEN: non gli serve nessuno scope.
+permissions: {}
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      # La conferma va verificata PRIMA di installare o eseguire qualsiasi cosa,
+      # e senza interpolare gli input nello script: entrambi passano dall'env e
+      # vengono confrontati da bash come stringhe.
+      - name: Verifica la conferma
+        env:
+          SUBDOMAIN: ${{ inputs.subdomain }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$SUBDOMAIN" != "$CONFIRM" ]; then
+            echo "::error::La conferma non corrisponde al sottodominio. Nessuna modifica effettuata."
+            echo "Atteso il nome ripetuto identico nel campo 'confirm'."
+            exit 1
+          fi
+          echo "Conferma valida per '$SUBDOMAIN'."
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Rimuovi il sottodominio
+        env:
+          # La cancellazione tocca solo cPanel: niente SERVER_IP, WHM o Namecheap.
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          SUBDOMAIN: ${{ inputs.subdomain }}
+          WITH_FILES: ${{ inputs.with_files }}
+          PURGE: ${{ inputs.purge }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=("$SUBDOMAIN" --delete)
+          [ "$WITH_FILES" = "true" ] && ARGS+=(--with-files)
+          [ "$PURGE" = "true" ] && ARGS+=(--purge)
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          python create_subdomain.py "${ARGS[@]}"
