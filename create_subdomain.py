@@ -20,6 +20,11 @@ Uso:
     python3 create_subdomain.py lab --skip-autossl --skip-https-redirect
     python3 create_subdomain.py lab --with-dns-api   # solo se serve un record dedicato
 
+Rimozione:
+    python3 create_subdomain.py lab --delete                        # solo il sottodominio
+    python3 create_subdomain.py lab --delete --with-files           # + cartella nel cestino
+    python3 create_subdomain.py lab --delete --with-files --purge   # + cartella cancellata
+
 Le credenziali si passano tramite variabili d'ambiente (vedi .env.example
 nella stessa cartella). Non salvare mai le API key nel codice o in git.
 """
