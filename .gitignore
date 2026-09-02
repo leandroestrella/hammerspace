@@ -11,3 +11,8 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Claude Code working files
+PLAN.md
+CLAUDE.md
+.claude/

@@ -1,0 +1,69 @@
+name: Create/delete subdomain
+
+on:
+  workflow_dispatch:
+    inputs:
+      subdomain:
+        description: "Nome del sottodominio (es. 'lab')"
+        required: true
+        type: string
+      delete:
+        description: "Rimuovi il sottodominio invece di crearlo"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Mostra le chiamate senza eseguirle"
+        required: false
+        type: boolean
+        default: false
+      with_dns_api:
+        description: "Crea anche un record DNS dedicato via Namecheap API"
+        required: false
+        type: boolean
+        default: false
+      skip_autossl:
+        description: "Salta lo step AutoSSL"
+        required: false
+        type: boolean
+        default: true
+      skip_https_redirect:
+        description: "Salta la scrittura del blocco .htaccess per l'HTTPS redirect"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run create_subdomain.py
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          WHM_HOST: ${{ secrets.WHM_HOST }}
+          WHM_USER: ${{ secrets.WHM_USER }}
+          WHM_API_TOKEN: ${{ secrets.WHM_API_TOKEN }}
+          NAMECHEAP_API_USER: ${{ secrets.NAMECHEAP_API_USER }}
+          NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+          NAMECHEAP_USERNAME: ${{ secrets.NAMECHEAP_USERNAME }}
+          NAMECHEAP_CLIENT_IP: ${{ secrets.NAMECHEAP_CLIENT_IP }}
+        run: |
+          ARGS=("${{ inputs.subdomain }}")
+          [ "${{ inputs.delete }}" = "true" ] && ARGS+=(--delete)
+          [ "${{ inputs.dry_run }}" = "true" ] && ARGS+=(--dry-run)
+          [ "${{ inputs.with_dns_api }}" = "true" ] && ARGS+=(--with-dns-api)
+          [ "${{ inputs.skip_autossl }}" = "true" ] && ARGS+=(--skip-autossl)
+          [ "${{ inputs.skip_https_redirect }}" = "true" ] && ARGS+=(--skip-https-redirect)
+          python create_subdomain.py "${ARGS[@]}"
