@@ -1,0 +1,139 @@
+# usage
+
+two ways to run the same script: from the **actions tab** on github (nothing
+to install), or from a **local terminal** (useful for debugging, and the only
+way to see a traceback in full).
+
+## from github actions
+
+**actions** tab → pick a workflow → **run workflow**.
+
+### create subdomain
+
+| input | default | what it does |
+| --- | --- | --- |
+| `subdomain` | — | the name only, without the root domain: `lab`, not `lab.example.com` |
+| `dry_run` | off | prints every call it would make, touches nothing |
+| `with_dns_api` | off | also creates a dedicated namecheap a record — usually unnecessary, see [dns](#dns) |
+| `skip_autossl` | **on** | leaves ssl alone; on by default because autossl needs a whm token nobody has set yet |
+| `skip_https_redirect` | off | skips writing the `.htaccess` redirect block |
+
+### delete subdomain
+
+| input | default | what it does |
+| --- | --- | --- |
+| `subdomain` | — | the name to remove |
+| `confirm` | — | retype the same name; anything else and the job stops before installing anything |
+| `with_files` | off | also delete the document root folder |
+| `purge` | off | with `with_files`: delete permanently instead of moving to the trash |
+| `dry_run` | off | prints every call it would make, touches nothing |
+
+creating and deleting are deliberately separate workflows, so a destructive
+run is never one mis-clicked checkbox away from a routine one. the delete
+workflow also only receives the cpanel secrets — it never sees the dns or whm
+credentials.
+
+## from a terminal
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env    # fill in your credentials
+chmod 600 .env          # it holds live api tokens
+set -a; source .env; set +a
+```
+
+then:
+
+```bash
+# create
+python3 create_subdomain.py lab
+python3 create_subdomain.py lab --dry-run
+python3 create_subdomain.py lab --with-dns-api          # only if you need a dedicated record
+python3 create_subdomain.py lab --skip-https-redirect
+
+# delete
+python3 create_subdomain.py lab --delete                       # subdomain only
+python3 create_subdomain.py lab --delete --with-files          # + folder to ~/.trash
+python3 create_subdomain.py lab --delete --with-files --purge  # + folder gone for good
+```
+
+`--with-files` without `--delete`, or `--purge` without `--with-files`, is
+rejected with a clear message rather than silently ignored.
+
+## what a creation actually does
+
+1. **cpanel** — creates the subdomain with its document root at `~/<subdomain>`
+   (one level above `public_html`, not inside it)
+2. **dns** — skipped by default, see below
+3. **autossl** — skipped by default, see [ssl](#ssl)
+4. **https redirect** — appends a `mod_rewrite` block to
+   `~/<subdomain>/.htaccess`, creating the file if it isn't there
+
+each step prints what it's doing with a `[step]` prefix, so a failed run tells
+you exactly how far it got.
+
+## dry runs
+
+every network-touching step supports `--dry-run`, and genuinely makes **no**
+calls when it's on — not even read-only ones. use it freely; it's the cheapest
+way to check you typed the right name.
+
+```
+[cPanel] [dry-run] GET https://host:2083/execute/SubDomain/addsubdomain params={'domain': 'lab', ...}
+[Namecheap] Step saltato: coperto dal record wildcard '*'
+[AutoSSL] Step saltato (--skip-autossl).
+[HTTPS redirect] [dry-run] Aggiungerei a lab/.htaccess: ...
+```
+
+one consequence worth knowing: in a dry run the delete path can't show you the
+real document root, because reading it would be a network call. it says so
+instead of guessing.
+
+## dns
+
+a wildcard `*` → server-ip record was created once, by hand, in namecheap. that
+means **every** subdomain resolves the moment it exists — no per-subdomain dns
+work, which is why the step is skipped by default.
+
+`--with-dns-api` exists for the rare case you need a dedicated record (a
+different ip for one subdomain, or no wildcard at all). two warnings:
+
+- namecheap's api is gated behind account requirements (a $50 balance, 20+
+  domains, or $50 spent in the last two years) that this account doesn't meet,
+  so this path is **untested against a live api**
+- `setHosts` rewrites *every* dns record for the domain at once. the script
+  reads them all back and resends them, preserving `EmailType` and caa
+  `Flags`/`Tag`, and it **refuses to run** if any record has dynamic dns
+  enabled, because the api has no way to preserve that flag
+
+if you ever do use it, check the domain's records before and after.
+
+## ssl
+
+autossl needs a **whm** token — root or reseller level — which is a different
+thing from the cpanel user token everything else uses. until one exists,
+`skip_autossl` stays on by default and new subdomains are served the server's
+default certificate, so `https://<subdomain>` will show a certificate warning
+while plain `http://` correctly redirects.
+
+to enable it later: get a token from whm → development → manage api tokens, then
+set `WHM_HOST`, `WHM_USER` (the reseller's own username, **not** `root`) and
+`WHM_API_TOKEN`, and turn `skip_autossl` off.
+
+## deleting: trash vs purge
+
+`--with-files` moves the folder to `~/.trash`, where cpanel's file manager can
+restore it. `--purge` deletes it outright.
+
+two behaviours of cpanel's file api worth knowing:
+
+- trashing `~/lab` when a `lab` is already in the trash lands it as `lab.1`
+- the delete call reports **success even for paths that don't exist**, so a
+  "deleted" line is not by itself proof anything was there
+
+the script mitigates the second by reading the real document root from cpanel
+before deleting, and refusing any path outside the home directory, the home
+itself, or `public_html`.
