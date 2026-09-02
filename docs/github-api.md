@@ -3,9 +3,6 @@
 what `setup_autodeploy.py` has to get right when it writes to a repository
 that isn't this one.
 
-> ⚠️ written against the documented api; not yet exercised against a real
-> target repo. confirm on the first run and update this note.
-
 ## secrets can't be written in plain text
 
 there is no "set this secret to this string" call. github publishes a public
@@ -65,6 +62,25 @@ smoke test, but it means the operation isn't dry at the end.
 
 it's also the reason the ftp account and the secrets are created *first*: by the
 time the workflow exists, everything it needs already does.
+
+## `permissions: {}` breaks checkout on a private repo
+
+hammerspace's own workflows declare `permissions: {}` — they talk to cpanel and
+github with their own credentials and want nothing from the automatic
+`GITHUB_TOKEN`. copying that line into the *generated* deploy workflow was
+wrong: `actions/checkout` reads the repository through that token, and on a
+private repo with no permissions it fails as:
+
+```
+remote: Repository not found.
+fatal: repository 'https://github.com/owner/repo/' not found
+```
+
+which reads like a typo or a deleted repo, not a permissions problem. it also
+would not have shown up on a public repo, where the anonymous clone succeeds.
+
+the generated workflow declares `contents: read` and nothing else. found on the
+first real deploy.
 
 ## writing a file replaces it
 

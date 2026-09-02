@@ -189,8 +189,12 @@ def test_workflow_usa_ftps_non_ftp_in_chiaro():
     assert passo["with"]["protocol"] == "ftps"
 
 
-def test_workflow_non_chiede_permessi_al_github_token():
-    assert yaml.safe_load(sa.costruisci_workflow("master"))["permissions"] == {}
+def test_workflow_puo_fare_checkout_di_un_repo_privato():
+    # Con "permissions: {}" il checkout di un repository privato fallisce con
+    # un fuorviante "Repository not found": e' successo al primo deploy vero.
+    assert yaml.safe_load(sa.costruisci_workflow("master"))["permissions"] == {
+        "contents": "read"
+    }
 
 
 def test_server_dir_riceve_la_barra_finale():

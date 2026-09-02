@@ -142,6 +142,14 @@ curl -s -G "https://$CPANEL_HOST:2083/execute/DomainInfo/domains_data" \
   -d "format=list" | python3 -m json.tool
 ```
 
+## the deploy failed at checkout with "Repository not found"
+
+on a private repo that usually means the workflow's `permissions` block doesn't
+grant `contents: read`, not that the repo is missing — `actions/checkout` reads
+through `GITHUB_TOKEN`, and with no permissions it gets a 404 that reads like a
+typo. workflows generated before this was fixed have `permissions: {}`; re-run
+with `--force` to replace the file.
+
 ## a deploy ran the moment i set it up
 
 expected. the workflow triggers on pushes to the branch, and the commit that

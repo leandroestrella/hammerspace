@@ -102,6 +102,9 @@ python3 setup_autodeploy.py lab --repo you/lab --branch web
 python3 setup_autodeploy.py lab --repo you/lab --show-password    # for winscp
 python3 setup_autodeploy.py lab --repo you/lab --skip-workflow-file
 
+# auto deploy: repair just the workflow file of an existing setup
+python3 setup_autodeploy.py lab --repo you/lab --skip-ftp --skip-secrets --force
+
 # auto deploy: tear down
 python3 setup_autodeploy.py lab --repo you/lab --delete
 ```
@@ -144,6 +147,22 @@ real deploy runs. the ftp account and the secrets have to exist by then.
 that also means `setup_autodeploy.py` is not a quiet operation at the end: it
 finishes by publishing your repo. `--dry-run` first if you're not sure, or
 `--skip-workflow-file` to stop one step short and commit the file yourself.
+
+### repairing an existing setup
+
+the preflight refuses to run against a project whose ftp account already
+exists, which is right for a fresh setup but unhelpful when you only want to
+update the workflow file. `--skip-ftp` leaves the account alone and skips that
+check, so:
+
+```bash
+python3 setup_autodeploy.py lab --repo you/lab --skip-ftp --skip-secrets --force
+```
+
+rewrites the workflow and nothing else. it needs `--skip-secrets` (or an
+explicit `--ftp-password`), because without creating the account there's no
+password to put in the secret — writing one anyway would leave `FTP_PASSWORD`
+holding a value that opens nothing.
 
 ### the generated workflow isn't the one in the doc
 

@@ -432,6 +432,10 @@ def elimina_secrets(owner, repo, dry_run=False):
 #   - niente fetch-depth: 2 -> serviva alla v3, che calcolava le differenze
 #     con git diff. La v4 tiene un file di stato sul server
 #     (.ftp-deploy-sync-state.json) e non ha bisogno della storia git.
+#
+# I permessi sono l'opposto di quelli dei workflow di questo repository:
+# la' "permissions: {}" va bene, qui il checkout deve poter leggere un
+# repository privato. Verificato: con {} il primo deploy fallisce.
 # --------------------------------------------------------------------------- #
 
 WORKFLOW_TEMPLATE = """\
@@ -449,8 +453,11 @@ on:
       - "{branch}"
   workflow_dispatch:
 
-# Il job non usa il GITHUB_TOKEN: non gli serve nessuno scope.
-permissions: {{}}
+# Il minimo che serve: actions/checkout su un repository PRIVATO ha bisogno
+# di contents: read. Con "permissions: {{}}" il GITHUB_TOKEN resta senza
+# permessi e il checkout fallisce con un fuorviante "Repository not found".
+permissions:
+  contents: read
 
 # Due deploy contemporanei sulla stessa cartella FTP si sovrascrivono a
 # vicenda e lasciano il file di stato incoerente: si accodano invece.
@@ -613,7 +620,7 @@ def elimina_workflow(owner, repo, branch, path=WORKFLOW_PATH, dry_run=False):
 # --------------------------------------------------------------------------- #
 
 def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
-              force=False, dry_run=False):
+              skip_ftp=False, force=False, dry_run=False):
     if dry_run:
         log("Preflight", "[dry-run] Salto i controlli preliminari (sono chiamate di rete).")
         return
@@ -639,12 +646,13 @@ def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
     if not skip_workflow:
         controlla_workflow_legacy(owner, repo, branch, force=force)
 
-    if account_ftp_esiste(ftp_user, dominio):
+    if not skip_ftp and account_ftp_esiste(ftp_user, dominio):
         raise RuntimeError(
             f"L'account FTP {ftp_login_completo(ftp_user, dominio)} esiste gia'. "
             "Usa --ftp-user per sceglierne un altro, oppure rimuovi quello "
             "esistente con --delete (la password non e' recuperabile: se ti "
-            "serve, resettala da cPanel -> FTP Accounts)."
+            "serve, resettala da cPanel -> FTP Accounts). Per aggiornare solo il "
+            "workflow di un deploy gia' configurato: --skip-ftp --skip-secrets --force."
         )
     log("Preflight", "Controlli superati.")
 
@@ -704,6 +712,13 @@ def main():
         "--skip-secrets", action="store_true", help="Non toccare i secret del repository."
     )
     parser.add_argument(
+        "--skip-ftp",
+        action="store_true",
+        help="Non toccare l'account FTP: si assume che esista gia'. Serve a "
+             "riparare un deploy gia' configurato (--skip-ftp --skip-secrets "
+             "--force aggiorna solo il workflow) senza rifare tutto da capo.",
+    )
+    parser.add_argument(
         "--skip-workflow-file",
         action="store_true",
         help="Non committare il workflow di deploy (lo stampa e basta). "
@@ -734,6 +749,13 @@ def main():
         parser.error("--force riguarda solo la scrittura del workflow, non --delete.")
     if args.show_password and args.delete:
         parser.error("--show-password non ha senso con --delete.")
+    # Senza creare l'account non si conosce la password, e i secret sarebbero
+    # scritti con un valore che non apre niente: meglio dirlo subito.
+    if args.skip_ftp and not (args.delete or args.skip_secrets or args.ftp_password):
+        parser.error(
+            "--skip-ftp non conosce la password dell'account esistente: "
+            "aggiungi --skip-secrets, oppure passa --ftp-password."
+        )
 
     require({"ROOT_DOMAIN": ROOT_DOMAIN}, ["ROOT_DOMAIN"])
     dominio = f"{progetto}.{ROOT_DOMAIN}"
@@ -754,20 +776,27 @@ def main():
             elimina_workflow(owner, repo, args.branch, dry_run=args.dry_run)
         if not args.skip_secrets:
             elimina_secrets(owner, repo, dry_run=args.dry_run)
-        elimina_account_ftp(ftp_user, dominio, dry_run=args.dry_run)
+        if args.skip_ftp:
+            log("cPanel", "Step saltato (--skip-ftp): l'account FTP resta dov'e'.")
+        else:
+            elimina_account_ftp(ftp_user, dominio, dry_run=args.dry_run)
         log("Fine", f"Deploy automatico di {owner}/{repo} smontato (o simulato con --dry-run).")
         return
 
     preflight(
         owner, repo, args.branch, ftp_user, dominio,
-        skip_workflow=args.skip_workflow_file, force=args.force, dry_run=args.dry_run,
+        skip_workflow=args.skip_workflow_file, skip_ftp=args.skip_ftp,
+        force=args.force, dry_run=args.dry_run,
     )
 
     password = args.ftp_password or genera_password()
     ftp_server = args.ftp_server or SERVER_IP
     require({"SERVER_IP (o --ftp-server)": ftp_server}, ["SERVER_IP (o --ftp-server)"])
 
-    crea_account_ftp(ftp_user, dominio, password, homedir, dry_run=args.dry_run)
+    if args.skip_ftp:
+        log("cPanel", f"Step saltato (--skip-ftp): uso l'account {ftp_login_completo(ftp_user, dominio)} esistente.")
+    else:
+        crea_account_ftp(ftp_user, dominio, password, homedir, dry_run=args.dry_run)
 
     if not args.skip_secrets:
         scrivi_secrets(
@@ -792,7 +821,9 @@ def main():
             force=args.force, dry_run=args.dry_run,
         )
 
-    if args.show_password and not args.dry_run:
+    if args.skip_ftp:
+        pass  # nessuna password generata: non c'e' niente da dire
+    elif args.show_password and not args.dry_run:
         log("cPanel", f"Password FTP di {ftp_login_completo(ftp_user, dominio)}: {password}")
     elif not args.ftp_password and not args.dry_run:
         log(

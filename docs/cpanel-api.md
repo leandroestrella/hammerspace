@@ -129,10 +129,8 @@ formatted. see [setup](setup.md).
 
 ## the `Ftp` module is the exception to all of the above
 
-> ⚠️ unlike the rest of this page, this section has **not** been verified
-> against the live server yet — it's what the api documents and what
-> `setup_autodeploy.py` was written against. confirm it on the first real run
-> and update this note.
+verified against the live server on the first real run, same as the rest of
+this page.
 
 after `SubDomain` and `Fileman`, the expectation was another hunt through api2.
 `Ftp` doesn't need it: `add_ftp`, `delete_ftp` and `list_ftp` all exist in uapi,
@@ -162,5 +160,18 @@ three things worth knowing:
   reads the real document root from cpanel before touching anything.
 
 `list_ftp` also returns the account's own login, the anonymous `ftp` account and
-the log account, and doesn't consistently put the full login in one field —
-`serverlogin` usually has it, `user` sometimes. the existence check reads both.
+the log account. and it does **not** populate `serverlogin` at all on this
+server — every row comes back with `serverlogin: null` and the full
+`user@domain` string in `user`. reading only the field the docs suggest would
+find nothing, ever. the existence check reads both.
+
+## `.htaccess` already has cpanel's php directives in it
+
+the `.htaccess` in a fresh subdomain's document root isn't empty — cpanel puts a
+`# BEGIN cPanel-generated php ini directives` block there. appending the
+force-https rules rather than replacing the file isn't just politeness toward a
+user-edited file; it's required from the very first run.
+
+worth knowing alongside the deploy tool: `FTP-Deploy-Action` leaves that file
+alone, so the redirect survives a deploy. verified — `http://` still returns a
+301 after publishing.
