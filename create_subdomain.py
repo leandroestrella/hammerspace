@@ -161,6 +161,81 @@ def delete_subdomain(subdomain, dry_run=False):
     return True
 
 
+def get_home_dir():
+    """Ricava il path assoluto della home dall'API, invece di assumere
+    /home/<utente> (che su alcuni server non e' detto sia corretto)."""
+    url = f"https://{CPANEL_HOST}:2083/execute/Fileman/list_files"
+    resp = requests.get(
+        url, headers=cpanel_headers(), params={"dir": ".", "types": "dir"}, timeout=30
+    )
+    data = resp.json()
+    rows = data.get("data") or []
+    if not data.get("status") or not rows:
+        raise RuntimeError(f"Impossibile determinare la home dell'account: {data.get('errors')}")
+    home = rows[0].get("path")
+    if not home:
+        raise RuntimeError("La risposta di list_files non contiene il path della home.")
+    return home
+
+
+def delete_docroot(subdomain, purge=False, dry_run=False):
+    """Cancella la cartella document root del sottodominio (~/<subdomain>).
+
+    Come per delsubdomain, la UAPI non espone NESSUNA funzione di
+    cancellazione file (verificato: mkdir/delete_files/trash_files/unlink
+    non esistono nel modulo Fileman). L'unica via e' di nuovo la vecchia
+    API2 tramite /json-api/cpanel, con Fileman::fileop:
+      - op=trash  -> sposta in ~/.trash, recuperabile da cPanel (default)
+      - op=unlink -> cancellazione definitiva (--purge)
+    """
+    require(
+        {"CPANEL_HOST": CPANEL_HOST, "CPANEL_USER": CPANEL_USER, "CPANEL_API_TOKEN": CPANEL_API_TOKEN},
+        ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
+    )
+
+    # Rete di sicurezza: qui si cancellano file veri. Un nome malformato non
+    # deve poter puntare alla home, a public_html o fuori dalla home.
+    if not subdomain or "/" in subdomain or subdomain in (".", "..", "public_html"):
+        raise RuntimeError(
+            f"Nome sottodominio non valido per la cancellazione della cartella: {subdomain!r}"
+        )
+
+    op = "unlink" if purge else "trash"
+    modo = "cancellazione DEFINITIVA" if purge else "spostamento nel cestino (~/.trash)"
+
+    if dry_run:
+        log("Docroot", f"[dry-run] {modo} di ~/{subdomain} (API2 Fileman::fileop op={op})")
+        return True
+
+    home = get_home_dir()
+    target = f"{home}/{subdomain}"
+    log("Docroot", f"{modo} di {target}")
+
+    url = f"https://{CPANEL_HOST}:2083/json-api/cpanel"
+    params = {
+        "cpanel_jsonapi_user": CPANEL_USER,
+        "cpanel_jsonapi_apiversion": 2,
+        "cpanel_jsonapi_module": "Fileman",
+        "cpanel_jsonapi_func": "fileop",
+        "op": op,
+        "sourcefiles": target,
+        "doubledecode": 0,
+    }
+    resp = requests.get(url, headers=cpanel_headers(), params=params, timeout=90)
+    data = resp.json()
+    result = (data.get("cpanelresult", {}).get("data") or [{}])[0]
+    if result.get("result") not in (1, "1"):
+        raise RuntimeError(
+            f"Cancellazione cartella fallita: {result.get('reason') or data}. "
+            f"In alternativa rimuovila manualmente da cPanel -> File Manager."
+        )
+    if purge:
+        log("Docroot", "Cartella cancellata definitivamente.")
+    else:
+        log("Docroot", "Cartella spostata nel cestino (recuperabile da cPanel -> File Manager -> Trash).")
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # 2. Namecheap: aggiunta record A (domains.dns.getHosts + domains.dns.setHosts)
 # --------------------------------------------------------------------------- #
@@ -381,7 +456,19 @@ def main():
         "--delete",
         action="store_true",
         help="Rimuove il sottodominio da cPanel invece di crearlo (i file nella "
-             "document root non vengono cancellati).",
+             "document root non vengono cancellati, vedi --with-files).",
+    )
+    parser.add_argument(
+        "--with-files",
+        action="store_true",
+        help="Solo con --delete: cancella anche la cartella document root "
+             "(~/<subdomain>), spostandola nel cestino ~/.trash.",
+    )
+    parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Solo con --with-files: cancella la cartella in modo DEFINITIVO "
+             "invece di spostarla nel cestino.",
     )
     parser.add_argument(
         "--with-dns-api",
@@ -395,8 +482,22 @@ def main():
 
     subdomain = args.subdomain.strip().lower()
 
+    # I flag distruttivi hanno senso solo in combinazione con --delete:
+    # meglio fallire subito che ignorarli in silenzio.
+    if args.with_files and not args.delete:
+        parser.error("--with-files si usa solo insieme a --delete.")
+    if args.purge and not args.with_files:
+        parser.error("--purge si usa solo insieme a --with-files.")
+
     if args.delete:
+        # Prima il sottodominio, poi i file: delsubdomain e' lo step lento e
+        # piu' incline a fallire, e i file sono la parte non recuperabile.
+        # Se fallisce, i file sono ancora li'.
         delete_subdomain(subdomain, dry_run=args.dry_run)
+        if args.with_files:
+            delete_docroot(subdomain, purge=args.purge, dry_run=args.dry_run)
+        else:
+            log("Docroot", f"Cartella ~/{subdomain} lasciata sul server (usa --with-files per rimuoverla).")
         log("Fine", f"Sottodominio {subdomain}.{ROOT_DOMAIN} rimosso (o simulato con --dry-run).")
         return
 

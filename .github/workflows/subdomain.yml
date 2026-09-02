@@ -12,6 +12,16 @@ on:
         required: false
         type: boolean
         default: false
+      with_files:
+        description: "Solo con delete: cancella anche la cartella (nel cestino ~/.trash)"
+        required: false
+        type: boolean
+        default: false
+      purge:
+        description: "Solo con with_files: cancellazione DEFINITIVA invece del cestino"
+        required: false
+        type: boolean
+        default: false
       dry_run:
         description: "Mostra le chiamate senza eseguirle"
         required: false
@@ -62,6 +72,8 @@ jobs:
         run: |
           ARGS=("${{ inputs.subdomain }}")
           [ "${{ inputs.delete }}" = "true" ] && ARGS+=(--delete)
+          [ "${{ inputs.with_files }}" = "true" ] && ARGS+=(--with-files)
+          [ "${{ inputs.purge }}" = "true" ] && ARGS+=(--purge)
           [ "${{ inputs.dry_run }}" = "true" ] && ARGS+=(--dry-run)
           [ "${{ inputs.with_dns_api }}" = "true" ] && ARGS+=(--with-dns-api)
           [ "${{ inputs.skip_autossl }}" = "true" ] && ARGS+=(--skip-autossl)
