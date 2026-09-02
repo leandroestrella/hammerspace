@@ -1,0 +1,80 @@
+name: Setup auto deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Nome del progetto/sottodominio (es. 'lab')"
+        required: true
+        type: string
+      repo:
+        description: "Repository di destinazione, formato 'owner/nome'"
+        required: true
+        type: string
+      branch:
+        description: "Branch il cui push fa partire il deploy"
+        required: false
+        type: string
+        default: master
+      dry_run:
+        description: "Mostra le chiamate senza eseguirle"
+        required: false
+        type: boolean
+        default: false
+      skip_workflow_file:
+        description: "Non committare il workflow sul repository (lo stampa e basta)"
+        required: false
+        type: boolean
+        default: false
+      force:
+        description: "Sovrascrive un workflow di deploy già presente e diverso"
+        required: false
+        type: boolean
+        default: false
+
+# Il job non usa il GITHUB_TOKEN: scrive sul repository di destinazione con
+# GITHUB_PAT, e su questo repository non gli serve nessuno scope.
+permissions: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Configura il deploy automatico
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          # PAT personale, NON il GITHUB_TOKEN del run: quest'ultimo vale solo
+          # per questo repository e non potrebbe scrivere su quello di
+          # destinazione. Serve lo scope 'workflow' oltre a 'repo'.
+          GITHUB_PAT: ${{ secrets.DEPLOY_GITHUB_PAT }}
+          # Gli input passano dall'ambiente, NON interpolati dentro lo script:
+          # "${{ inputs.project }}" verrebbe incollato prima che bash lo parsi,
+          # e un valore tipo  x") ; comando ; ARGS=("y  eseguirebbe codice
+          # arbitrario con tutti i secrets qui sopra nell'ambiente.
+          PROJECT: ${{ inputs.project }}
+          REPO: ${{ inputs.repo }}
+          BRANCH: ${{ inputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SKIP_WORKFLOW_FILE: ${{ inputs.skip_workflow_file }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          ARGS=("$PROJECT" --repo "$REPO" --branch "$BRANCH")
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          [ "$SKIP_WORKFLOW_FILE" = "true" ] && ARGS+=(--skip-workflow-file)
+          [ "$FORCE" = "true" ] && ARGS+=(--force)
+          # Niente --show-password: qui finirebbe nel log del run. La password
+          # generata è già dentro il secret FTP_PASSWORD del repository di
+          # destinazione; per WinSCP resettala da cPanel → FTP Accounts.
+          python setup_autodeploy.py "${ARGS[@]}"

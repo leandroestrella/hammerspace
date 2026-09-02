@@ -2,7 +2,8 @@
 
 things that cost real time to discover, kept here so nobody has to discover
 them twice. everything below was verified against a live server, not read off
-a documentation page.
+a documentation page — **except** the `Ftp` section at the bottom, which is
+flagged as unverified until the first real run.
 
 ## uapi is missing whole categories of function
 
@@ -18,6 +19,8 @@ modern one — and it has holes big enough to matter:
 | list files | yes | `Fileman::list_files` |
 | **delete** a file | **no** | api2 `Fileman::fileop` |
 | list domains + document roots | yes | `DomainInfo::domains_data` |
+| create an ftp account | yes | `Ftp::add_ftp` |
+| **delete** an ftp account | **yes** | `Ftp::delete_ftp` — the one delete uapi does expose |
 
 the `SubDomain` module exposes only `addsubdomain` and `changedocroot`. probing
 `Fileman` for `mkdir`, `delete_files`, `trash_files`, `unlink`, `remove_files`
@@ -123,3 +126,41 @@ likely real function, but it has never been tested here.
 it's a whm (root/reseller) operation on port **2087**, not a cpanel user
 operation on 2083. a cpanel token will not authenticate it, no matter how it's
 formatted. see [setup](setup.md).
+
+## the `Ftp` module is the exception to all of the above
+
+> ⚠️ unlike the rest of this page, this section has **not** been verified
+> against the live server yet — it's what the api documents and what
+> `setup_autodeploy.py` was written against. confirm it on the first real run
+> and update this note.
+
+after `SubDomain` and `Fileman`, the expectation was another hunt through api2.
+`Ftp` doesn't need it: `add_ftp`, `delete_ftp` and `list_ftp` all exist in uapi,
+delete included.
+
+```
+POST /execute/Ftp/add_ftp
+  user=<login>          # just the login half — cpanel appends @<domain>
+  domain=<fqdn>
+  pass=<password>
+  homedir=<path>        # relative to the account home
+  quota=0               # 0 means unlimited
+```
+
+three things worth knowing:
+
+- **`user` is the login half only.** the account that ends up existing is
+  `<user>@<domain>`, and that full string is what an ftp client (and the
+  `FTP_USERNAME` secret) needs. passing an already-`@`-qualified value creates
+  something doubly qualified.
+- **`homedir` is relative to the account home**, the same way `addsubdomain`'s
+  `dir` is. it has to be the subdomain's document root, or the deploy lands in
+  a folder nothing serves.
+- **`destroy=1` on `delete_ftp` deletes the account's home directory too** —
+  which here is the live site. `setup_autodeploy.py` hardcodes `destroy=0` and
+  leaves file deletion to `create_subdomain.py --delete --with-files`, which
+  reads the real document root from cpanel before touching anything.
+
+`list_ftp` also returns the account's own login, the anonymous `ftp` account and
+the log account, and doesn't consistently put the full login in one field —
+`serverlogin` usually has it, `user` sometimes. the existence check reads both.

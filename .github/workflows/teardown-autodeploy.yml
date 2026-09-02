@@ -1,0 +1,75 @@
+name: Teardown auto deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Nome del progetto/sottodominio (es. 'lab')"
+        required: true
+        type: string
+      repo:
+        description: "Repository di destinazione, formato 'owner/nome'"
+        required: true
+        type: string
+      confirm:
+        description: "Riscrivi qui lo stesso nome del progetto per confermare"
+        required: true
+        type: string
+      branch:
+        description: "Branch da cui rimuovere il workflow di deploy"
+        required: false
+        type: string
+        default: master
+      dry_run:
+        description: "Mostra le chiamate senza eseguirle"
+        required: false
+        type: boolean
+        default: false
+
+# Il job non usa il GITHUB_TOKEN: non gli serve nessuno scope su questo repository.
+permissions: {}
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    steps:
+      # La conferma va verificata PRIMA di installare o eseguire qualsiasi cosa,
+      # e senza interpolare gli input nello script: entrambi passano dall'env e
+      # vengono confrontati da bash come stringhe.
+      - name: Verifica la conferma
+        env:
+          PROJECT: ${{ inputs.project }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$PROJECT" != "$CONFIRM" ]; then
+            echo "::error::La conferma non corrisponde al progetto. Nessuna modifica effettuata."
+            echo "Atteso il nome ripetuto identico nel campo 'confirm'."
+            exit 1
+          fi
+          echo "Conferma valida per '$PROJECT'."
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Smonta il deploy automatico
+        env:
+          # Lo smontaggio tocca cPanel e GitHub: niente SERVER_IP, che serve
+          # solo a scrivere il secret FTP_SERVER in creazione.
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+          ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
+          GITHUB_PAT: ${{ secrets.DEPLOY_GITHUB_PAT }}
+          PROJECT: ${{ inputs.project }}
+          REPO: ${{ inputs.repo }}
+          BRANCH: ${{ inputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=("$PROJECT" --repo "$REPO" --branch "$BRANCH" --delete)
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          python setup_autodeploy.py "${ARGS[@]}"

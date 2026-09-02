@@ -1,6 +1,6 @@
 # setup
 
-what you need before the first run, in both places the script can run from.
+what you need before the first run, in both places the scripts can run from.
 
 ## credentials
 
@@ -18,15 +18,42 @@ what you need before the first run, in both places the script can run from.
 | `NAMECHEAP_API_KEY` | no | namecheap → profile → tools → api access |
 | `NAMECHEAP_USERNAME` | no | defaults to `NAMECHEAP_API_USER` |
 | `NAMECHEAP_CLIENT_IP` | no | must be whitelisted in namecheap → api access |
+| `GITHUB_PAT` | for auto-deploy | a personal access token that can write to the **target** repo — see below |
 
 a missing variable fails immediately, naming exactly which ones are absent —
 nothing half-runs.
 
-### the two token levels are not interchangeable
+### the two cpanel token levels are not interchangeable
 
 the **cpanel** token acts as one account and can do everything here except ssl.
 the **whm** token acts at server level and is the only thing that can trigger
 autossl. a cpanel token in `WHM_API_TOKEN` will not work.
+
+### the github token is not `GITHUB_TOKEN`
+
+`setup_autodeploy.py` writes to a *different* repository than the one it runs
+from — it creates secrets on your project's repo and commits a workflow there.
+the automatic `GITHUB_TOKEN` that exists inside every actions run is scoped to
+the repo running the job, so it can't do either. hence the deliberately
+different name: the script reads `GITHUB_PAT`, and picking up the wrong token
+by accident isn't possible.
+
+what the pat needs:
+
+| token type | permissions |
+| --- | --- |
+| classic | `repo` **and** `workflow` |
+| fine-grained, on the target repo | `Secrets: write`, `Contents: write`, `Workflows: write` |
+
+the `workflow` half is the one people miss. github specifically refuses to let
+a token create or update anything under `.github/workflows/` without it, and
+says so in a 403 — which the script translates into a message naming the scope.
+if you'd rather not hand out that scope, `--skip-workflow-file` prints the
+workflow instead of committing it and the token only needs secrets access.
+
+this is a broad token. treat it like one: give it the shortest expiry you can
+live with, prefer fine-grained scoped to the repos you actually deploy, and
+regenerate it if it ever lands in a log.
 
 ## local
 
@@ -66,8 +93,19 @@ ROOT_DOMAIN
 SERVER_IP
 ```
 
-that's enough for creating and deleting. add the `WHM_*` secrets when you want
-autossl, and the `NAMECHEAP_*` ones only if you'll use `--with-dns-api`.
+that's enough for creating and deleting subdomains. add the `WHM_*` secrets
+when you want autossl, and the `NAMECHEAP_*` ones only if you'll use
+`--with-dns-api`.
+
+for the auto-deploy workflows, add one more:
+
+```
+DEPLOY_GITHUB_PAT
+```
+
+it can't be called `GITHUB_PAT` here — github reserves the whole `GITHUB_`
+prefix for secret names and rejects it. the workflows map
+`secrets.DEPLOY_GITHUB_PAT` onto the `GITHUB_PAT` env var the script reads.
 
 github masks secrets in logs automatically — you'll see `***` where a value
 would be.
