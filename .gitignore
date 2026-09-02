@@ -1,0 +1,13 @@
+# Segreti: mai committare
+.env
+
+# Ambiente virtuale Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
