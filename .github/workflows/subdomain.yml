@@ -43,6 +43,9 @@ on:
         type: boolean
         default: false
 
+# Il job non usa il GITHUB_TOKEN: non gli serve nessuno scope.
+permissions: {}
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -69,13 +72,25 @@ jobs:
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
           NAMECHEAP_USERNAME: ${{ secrets.NAMECHEAP_USERNAME }}
           NAMECHEAP_CLIENT_IP: ${{ secrets.NAMECHEAP_CLIENT_IP }}
+          # L'input passa dall'ambiente, NON interpolato dentro lo script:
+          # "${{ inputs.subdomain }}" verrebbe incollato prima che bash lo
+          # parsi, e un valore tipo  x") ; comando ; ARGS=("y  eseguirebbe
+          # codice arbitrario con tutti i secrets qui sopra nell'ambiente.
+          SUBDOMAIN: ${{ inputs.subdomain }}
+          DELETE: ${{ inputs.delete }}
+          WITH_FILES: ${{ inputs.with_files }}
+          PURGE: ${{ inputs.purge }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          WITH_DNS_API: ${{ inputs.with_dns_api }}
+          SKIP_AUTOSSL: ${{ inputs.skip_autossl }}
+          SKIP_HTTPS_REDIRECT: ${{ inputs.skip_https_redirect }}
         run: |
-          ARGS=("${{ inputs.subdomain }}")
-          [ "${{ inputs.delete }}" = "true" ] && ARGS+=(--delete)
-          [ "${{ inputs.with_files }}" = "true" ] && ARGS+=(--with-files)
-          [ "${{ inputs.purge }}" = "true" ] && ARGS+=(--purge)
-          [ "${{ inputs.dry_run }}" = "true" ] && ARGS+=(--dry-run)
-          [ "${{ inputs.with_dns_api }}" = "true" ] && ARGS+=(--with-dns-api)
-          [ "${{ inputs.skip_autossl }}" = "true" ] && ARGS+=(--skip-autossl)
-          [ "${{ inputs.skip_https_redirect }}" = "true" ] && ARGS+=(--skip-https-redirect)
+          ARGS=("$SUBDOMAIN")
+          [ "$DELETE" = "true" ] && ARGS+=(--delete)
+          [ "$WITH_FILES" = "true" ] && ARGS+=(--with-files)
+          [ "$PURGE" = "true" ] && ARGS+=(--purge)
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          [ "$WITH_DNS_API" = "true" ] && ARGS+=(--with-dns-api)
+          [ "$SKIP_AUTOSSL" = "true" ] && ARGS+=(--skip-autossl)
+          [ "$SKIP_HTTPS_REDIRECT" = "true" ] && ARGS+=(--skip-https-redirect)
           python create_subdomain.py "${ARGS[@]}"

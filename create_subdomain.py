@@ -31,6 +31,7 @@ nella stessa cartella). Non salvare mai le API key nel codice o in git.
 
 import argparse
 import os
+import re
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -84,6 +85,67 @@ def cpanel_headers():
     return {"Authorization": f"cpanel {CPANEL_USER}:{CPANEL_API_TOKEN}"}
 
 
+# Nome di sottodominio valido: lettere, cifre e trattini, niente trattino
+# iniziale/finale (RFC 1123), max 63 caratteri per label.
+SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def valida_subdomain(subdomain):
+    """Rifiuta i nomi non validi PRIMA di usarli in chiamate o path.
+
+    Non e' solo cosmetica: il nome finisce in un path di cancellazione file
+    e negli argomenti passati dal workflow, quindi un valore inatteso non
+    deve nemmeno arrivare a quel punto.
+    """
+    if not SUBDOMAIN_RE.match(subdomain or ""):
+        raise ValueError(
+            f"Nome sottodominio non valido: {subdomain!r}. "
+            "Ammessi solo lettere minuscole, cifre e trattini (non a inizio/fine), max 63 caratteri."
+        )
+    return subdomain
+
+
+def api2_call(module, func, extra_params, dove_controllare, timeout=90):
+    """Chiama la vecchia API2 (/json-api/cpanel).
+
+    Serve per le operazioni che la UAPI non espone affatto: la cancellazione
+    di un sottodominio e quella dei file. Su questo server l'endpoint e'
+    lento e puo' sforare il timeout ANCHE SE l'operazione va comunque a
+    buon fine lato server: per questo il timeout viene tradotto in un
+    messaggio che dice esplicitamente di controllare prima di riprovare,
+    invece di lasciar passare un traceback.
+    """
+    url = f"https://{CPANEL_HOST}:2083/json-api/cpanel"
+    params = {
+        "cpanel_jsonapi_user": CPANEL_USER,
+        "cpanel_jsonapi_apiversion": 2,
+        "cpanel_jsonapi_module": module,
+        "cpanel_jsonapi_func": func,
+    }
+    params.update(extra_params)
+
+    try:
+        resp = requests.get(url, headers=cpanel_headers(), params=params, timeout=timeout)
+    except requests.exceptions.Timeout:
+        raise RuntimeError(
+            f"Timeout in attesa della risposta (l'endpoint API2 di questo server e' lento). "
+            f"L'operazione potrebbe comunque essere andata a buon fine: controlla in "
+            f"{dove_controllare} prima di riprovare, per evitare richieste duplicate."
+        )
+    return parse_api2_result(resp.json(), dove_controllare)
+
+
+def parse_api2_result(data, dove_controllare):
+    """Estrae l'esito da una risposta API2, alzando un errore parlante."""
+    result = (data.get("cpanelresult", {}).get("data") or [{}])[0]
+    if result.get("result") not in (1, "1"):
+        motivo = result.get("reason") or data.get("cpanelresult", {}).get("error") or data
+        raise RuntimeError(
+            f"Operazione fallita: {motivo}. In alternativa procedi manualmente da {dove_controllare}."
+        )
+    return result
+
+
 def create_subdomain(subdomain, dry_run=False):
     require(
         {
@@ -130,61 +192,85 @@ def delete_subdomain(subdomain, dry_run=False):
     # nel modulo SubDomain (solo addsubdomain e changedocroot). L'unica via
     # rimasta è la vecchia API2 (deprecata ma ancora attiva sulla maggior
     # parte dei server) tramite l'endpoint /json-api/cpanel.
-    url = f"https://{CPANEL_HOST}:2083/json-api/cpanel"
-    params = {
-        "cpanel_jsonapi_user": CPANEL_USER,
-        "cpanel_jsonapi_apiversion": 2,
-        "cpanel_jsonapi_module": "SubDomain",
-        "cpanel_jsonapi_func": "delsubdomain",
-        "domain": f"{subdomain}.{ROOT_DOMAIN}",
-    }
+    params = {"domain": f"{subdomain}.{ROOT_DOMAIN}"}
     log("cPanel", f"Rimozione sottodominio {subdomain}.{ROOT_DOMAIN} (via API2, legacy)")
     if dry_run:
-        log("cPanel", f"[dry-run] GET {url} params={params}")
+        log("cPanel", f"[dry-run] API2 SubDomain::delsubdomain params={params}")
         return True
 
-    try:
-        # Su questo server l'endpoint API2 risponde lentamente: timeout più
-        # ampio. NB: l'azione può comunque essere eseguita lato server anche
-        # se la risposta non arriva in tempo - in caso di timeout, controlla
-        # sempre in cPanel -> Domains prima di riprovare.
-        resp = requests.get(url, headers=cpanel_headers(), params=params, timeout=90)
-    except requests.exceptions.Timeout:
-        raise RuntimeError(
-            "Timeout in attesa della risposta (l'endpoint API2 di questo server è lento). "
-            "L'operazione potrebbe comunque essere andata a buon fine: controlla in "
-            "cPanel -> Domains prima di riprovare, per evitare richieste duplicate."
-        )
-    data = resp.json()
-    result = (data.get("cpanelresult", {}).get("data") or [{}])[0]
-    if result.get("result") not in (1, "1"):
-        raise RuntimeError(
-            f"Rimozione sottodominio fallita: {result.get('reason') or data}. "
-            f"In alternativa rimuovilo manualmente da cPanel -> Domains."
-        )
+    api2_call("SubDomain", "delsubdomain", params, "cPanel -> Domains")
     log("cPanel", "Sottodominio rimosso. (I file nella document root NON vengono cancellati automaticamente.)")
     return True
 
 
-def get_home_dir():
-    """Ricava il path assoluto della home dall'API, invece di assumere
-    /home/<utente> (che su alcuni server non e' detto sia corretto)."""
-    url = f"https://{CPANEL_HOST}:2083/execute/Fileman/list_files"
+def get_docroot(subdomain, dry_run=False):
+    """Legge (document root, home) REALI del sottodominio da DomainInfo::domains_data.
+
+    Non si assume ~/<subdomain>: cPanel permette qualsiasi document root, e
+    i sottodomini creati da versioni precedenti di questo script stanno
+    sotto public_html/<nome>. Cancellare una cartella basandosi su un path
+    presunto puo' colpire una directory scorrelata e lasciare i file veri
+    dove sono.
+
+    NB: va chiamata PRIMA di delete_subdomain - dopo la rimozione il
+    sottodominio non e' piu' elencato e la docroot non e' piu' recuperabile.
+    """
+    if dry_run:
+        return None, None
+
+    url = f"https://{CPANEL_HOST}:2083/execute/DomainInfo/domains_data"
     resp = requests.get(
-        url, headers=cpanel_headers(), params={"dir": ".", "types": "dir"}, timeout=30
+        url, headers=cpanel_headers(), params={"format": "list"}, timeout=30
     )
     data = resp.json()
-    rows = data.get("data") or []
-    if not data.get("status") or not rows:
-        raise RuntimeError(f"Impossibile determinare la home dell'account: {data.get('errors')}")
-    home = rows[0].get("path")
-    if not home:
-        raise RuntimeError("La risposta di list_files non contiene il path della home.")
-    return home
+    if not data.get("status"):
+        raise RuntimeError(f"Impossibile leggere i domini dell'account: {data.get('errors')}")
+
+    fqdn = f"{subdomain}.{ROOT_DOMAIN}"
+    return estrai_docroot(data.get("data"), fqdn)
 
 
-def delete_docroot(subdomain, purge=False, dry_run=False):
-    """Cancella la cartella document root del sottodominio (~/<subdomain>).
+def estrai_docroot(righe, fqdn):
+    """Cerca (documentroot, homedir) del dominio richiesto in domains_data."""
+    for row in righe or []:
+        if not isinstance(row, dict) or row.get("domain") != fqdn:
+            continue
+        docroot = row.get("documentroot")
+        home = row.get("homedir")
+        if not docroot or not home:
+            raise RuntimeError(f"cPanel non riporta document root e home per {fqdn}.")
+        return docroot, home
+    raise RuntimeError(
+        f"Sottodominio {fqdn} non trovato tra i domini dell'account: "
+        f"impossibile determinarne la document root."
+    )
+
+
+def assert_docroot_sicura(docroot, home):
+    """Impedisce che una docroot inattesa faccia cancellare la cosa sbagliata.
+
+    Qui si cancellano file veri: la docroot deve stare DENTRO la home e non
+    puo' essere la home stessa ne' public_html (che e' la document root del
+    dominio principale - cancellarla porterebbe giu' il sito primario).
+    """
+    percorso = (docroot or "").rstrip("/")
+    home = (home or "").rstrip("/")
+    if not percorso or not home:
+        raise RuntimeError("Document root o home non determinabili: non procedo.")
+    if not percorso.startswith(home + "/"):
+        raise RuntimeError(
+            f"La document root {percorso!r} e' fuori dalla home {home!r}: non procedo."
+        )
+    relativo = percorso[len(home) + 1:]
+    if not relativo or relativo == "public_html" or ".." in relativo.split("/"):
+        raise RuntimeError(
+            f"Document root non sicura da cancellare: {percorso!r}."
+        )
+    return percorso
+
+
+def delete_docroot(subdomain, docroot=None, home=None, purge=False, dry_run=False):
+    """Cancella la cartella document root del sottodominio.
 
     Come per delsubdomain, la UAPI non espone NESSUNA funzione di
     cancellazione file (verificato: mkdir/delete_files/trash_files/unlink
@@ -198,42 +284,29 @@ def delete_docroot(subdomain, purge=False, dry_run=False):
         ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
     )
 
-    # Rete di sicurezza: qui si cancellano file veri. Un nome malformato non
-    # deve poter puntare alla home, a public_html o fuori dalla home.
-    if not subdomain or "/" in subdomain or subdomain in (".", "..", "public_html"):
-        raise RuntimeError(
-            f"Nome sottodominio non valido per la cancellazione della cartella: {subdomain!r}"
-        )
-
     op = "unlink" if purge else "trash"
     modo = "cancellazione DEFINITIVA" if purge else "spostamento nel cestino (~/.trash)"
 
     if dry_run:
-        log("Docroot", f"[dry-run] {modo} di ~/{subdomain} (API2 Fileman::fileop op={op})")
+        log(
+            "Docroot",
+            f"[dry-run] {modo} della document root di {subdomain}.{ROOT_DOMAIN} "
+            f"(API2 Fileman::fileop op={op}; il path reale viene letto da cPanel a run time)",
+        )
         return True
 
-    home = get_home_dir()
-    target = f"{home}/{subdomain}"
+    if not docroot or not home:
+        raise RuntimeError("Document root o home non fornite: non procedo alla cancellazione.")
+
+    target = assert_docroot_sicura(docroot, home)
     log("Docroot", f"{modo} di {target}")
 
-    url = f"https://{CPANEL_HOST}:2083/json-api/cpanel"
-    params = {
-        "cpanel_jsonapi_user": CPANEL_USER,
-        "cpanel_jsonapi_apiversion": 2,
-        "cpanel_jsonapi_module": "Fileman",
-        "cpanel_jsonapi_func": "fileop",
-        "op": op,
-        "sourcefiles": target,
-        "doubledecode": 0,
-    }
-    resp = requests.get(url, headers=cpanel_headers(), params=params, timeout=90)
-    data = resp.json()
-    result = (data.get("cpanelresult", {}).get("data") or [{}])[0]
-    if result.get("result") not in (1, "1"):
-        raise RuntimeError(
-            f"Cancellazione cartella fallita: {result.get('reason') or data}. "
-            f"In alternativa rimuovila manualmente da cPanel -> File Manager."
-        )
+    api2_call(
+        "Fileman",
+        "fileop",
+        {"op": op, "sourcefiles": target, "doubledecode": 0},
+        "cPanel -> File Manager",
+    )
     if purge:
         log("Docroot", "Cartella cancellata definitivamente.")
     else:
@@ -256,6 +329,31 @@ def namecheap_params(command, extra=None):
     if extra:
         p.update(extra)
     return p
+
+
+def costruisci_set_hosts(hosts, sld, tld, email_type=None):
+    """Costruisce i parametri di setHosts a partire dai record da riscrivere.
+
+    Estratta come funzione pura perche' e' il punto in cui un campo dimenticato
+    si traduce in record DNS persi: e' testabile senza toccare la rete.
+    """
+    extra = {"SLD": sld, "TLD": tld}
+    if email_type:
+        extra["EmailType"] = email_type
+    for i, h in enumerate(hosts, start=1):
+        extra[f"HostName{i}"] = h["HostName"]
+        extra[f"RecordType{i}"] = h["RecordType"]
+        extra[f"Address{i}"] = h["Address"]
+        extra[f"TTL{i}"] = h["TTL"]
+        if h["RecordType"] == "MX":
+            extra[f"MXPref{i}"] = h.get("MXPref", "10")
+        if h["RecordType"] == "CAA":
+            # Senza Flags/Tag un record CAA rimandato indietro perde significato.
+            if h.get("Flags") is not None:
+                extra[f"Flags{i}"] = h["Flags"]
+            if h.get("Tag") is not None:
+                extra[f"Tag{i}"] = h["Tag"]
+    return extra
 
 
 def add_dns_record(subdomain, dry_run=False):
@@ -293,6 +391,10 @@ def add_dns_record(subdomain, dry_run=False):
         errs = [e.text for e in root.findall(".//nc:Errors/nc:Error", ns)]
         raise RuntimeError(f"getHosts fallita: {errs}")
 
+    # setHosts riscrive TUTTI i record del dominio: quello che non viene
+    # rimandato indietro sparisce. Quindi il round-trip deve conservare anche
+    # i campi che non ci interessano direttamente (Flags/Tag dei CAA), non
+    # solo nome/tipo/indirizzo.
     hosts = []
     for h in root.findall(".//nc:host", ns):
         hosts.append(
@@ -302,8 +404,30 @@ def add_dns_record(subdomain, dry_run=False):
                 "Address": h.get("Address"),
                 "TTL": h.get("TTL"),
                 "MXPref": h.get("MXPref", "10"),
+                "Flags": h.get("Flags"),
+                "Tag": h.get("Tag"),
+                "IsDDNSEnabled": (h.get("IsDDNSEnabled") or "").lower() == "true",
             }
         )
+
+    # L'API setHosts non ha un parametro per il flag Dynamic DNS: se un record
+    # ce l'ha attivo, il round-trip lo perde. Meglio fermarsi e lasciare che
+    # sia una scelta esplicita, invece di degradare un record in silenzio.
+    ddns = [h["HostName"] for h in hosts if h["IsDDNSEnabled"] and h["HostName"] != subdomain]
+    if ddns:
+        raise RuntimeError(
+            f"I record {ddns} hanno il Dynamic DNS attivo e setHosts non permette di "
+            f"conservarlo: riscrivendoli verrebbero declassati a record statici. "
+            f"Aggiungi il record a mano dal pannello Namecheap, oppure rimuovi il "
+            f"flag DDNS se non ti serve piu'."
+        )
+
+    # EmailType NON e' opzionale in pratica: se non viene rimandato indietro,
+    # Namecheap puo' resettare l'instradamento email del dominio (MX inclusi).
+    email_type = None
+    hosts_result = root.find(".//nc:DomainDNSGetHostsResult", ns)
+    if hosts_result is not None:
+        email_type = hosts_result.get("EmailType")
 
     # Rimuove un eventuale record preesistente con lo stesso nome, poi aggiunge quello nuovo
     hosts = [h for h in hosts if h["HostName"] != subdomain]
@@ -314,23 +438,15 @@ def add_dns_record(subdomain, dry_run=False):
             "Address": SERVER_IP,
             "TTL": "60",  # "Automatic" nell'interfaccia corrisponde al TTL minimo
             "MXPref": "10",
+            "Flags": None,
+            "Tag": None,
+            "IsDDNSEnabled": False,
         }
     )
 
-    extra = {"SLD": sld, "TLD": tld}
-    for i, h in enumerate(hosts, start=1):
-        extra[f"HostName{i}"] = h["HostName"]
-        extra[f"RecordType{i}"] = h["RecordType"]
-        extra[f"Address{i}"] = h["Address"]
-        extra[f"TTL{i}"] = h["TTL"]
-        if h["RecordType"] == "MX":
-            extra[f"MXPref{i}"] = h["MXPref"]
+    extra = costruisci_set_hosts(hosts, sld, tld, email_type)
 
     log("Namecheap", f"Scrittura {len(hosts)} record (incluso il nuovo A per '{subdomain}')")
-    if dry_run:
-        log("Namecheap", f"[dry-run] setHosts params={extra}")
-        return True
-
     set_resp = requests.get(
         NAMECHEAP_API_BASE,
         params=namecheap_params("namecheap.domains.dns.setHosts", extra),
@@ -405,11 +521,27 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 """
 
 
+def file_inesistente(data):
+    """True se l'errore di get_file_content dice che il file non c'e'.
+
+    Verificato sul server: per un file mancante l'API risponde status 0 con
+    un errore tipo "The file ... does not exist for the account.". Va
+    distinto da un errore di lettura vero, perche' nel primo caso si puo'
+    creare il file da zero, nel secondo no.
+    """
+    errori = data.get("errors") or []
+    return any("does not exist" in str(e) for e in errori)
+
+
 def force_https_redirect(subdomain, dry_run=False):
     require(
         {"CPANEL_HOST": CPANEL_HOST, "CPANEL_USER": CPANEL_USER, "CPANEL_API_TOKEN": CPANEL_API_TOKEN},
         ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
     )
+    # Qui il path non e' un'assunzione: questa funzione viene eseguita solo
+    # subito dopo create_subdomain, che ha appena impostato la document root
+    # a <subdomain>. Su un sottodominio preesistente andrebbe invece letta
+    # con get_docroot (come fa il percorso di cancellazione).
     doc_root = subdomain
     log("HTTPS redirect", f"Scrittura regole di redirect in {doc_root}/.htaccess")
     if dry_run:
@@ -423,11 +555,20 @@ def force_https_redirect(subdomain, dry_run=False):
         params={"dir": doc_root, "file": ".htaccess"},
         timeout=30,
     )
+    # save_file_content SOSTITUISCE l'intero file: se la lettura fallisce e si
+    # procede lo stesso, un .htaccess gia' popolato (regole WordPress, redirect
+    # custom...) verrebbe rimpiazzato dal solo blocco force-https. Quindi si
+    # distingue "il file non esiste" (normale su un sottodominio nuovo, si
+    # parte da vuoto) da "non sono riuscito a leggerlo" (ci si ferma).
     existing = ""
-    if resp.ok:
-        data = resp.json()
-        if data.get("status"):
-            existing = data["data"].get("content", "")
+    data = resp.json() if resp.ok else {}
+    if data.get("status"):
+        existing = (data.get("data") or {}).get("content", "")
+    elif not file_inesistente(data):
+        raise RuntimeError(
+            f"Lettura di {doc_root}/.htaccess fallita: {data.get('errors') or resp.status_code}. "
+            "Non proseguo: sovrascriverei un file esistente senza conoscerne il contenuto."
+        )
 
     if "force-https" in existing:
         log("HTTPS redirect", ".htaccess contiene già il blocco force-https, nessuna modifica.")
@@ -486,6 +627,10 @@ def main():
     args = parser.parse_args()
 
     subdomain = args.subdomain.strip().lower()
+    try:
+        valida_subdomain(subdomain)
+    except ValueError as e:
+        parser.error(str(e))
 
     # I flag distruttivi hanno senso solo in combinazione con --delete:
     # meglio fallire subito che ignorarli in silenzio.
@@ -495,12 +640,22 @@ def main():
         parser.error("--purge si usa solo insieme a --with-files.")
 
     if args.delete:
+        # La docroot va letta PRIMA di rimuovere il sottodominio: dopo, cPanel
+        # non lo elenca piu' e il path non e' piu' recuperabile. Se la lettura
+        # fallisce si esce qui, senza aver toccato nulla.
+        docroot, home = (None, None)
+        if args.with_files:
+            docroot, home = get_docroot(subdomain, dry_run=args.dry_run)
+
         # Prima il sottodominio, poi i file: delsubdomain e' lo step lento e
         # piu' incline a fallire, e i file sono la parte non recuperabile.
         # Se fallisce, i file sono ancora li'.
         delete_subdomain(subdomain, dry_run=args.dry_run)
         if args.with_files:
-            delete_docroot(subdomain, purge=args.purge, dry_run=args.dry_run)
+            delete_docroot(
+                subdomain, docroot=docroot, home=home,
+                purge=args.purge, dry_run=args.dry_run,
+            )
         else:
             log("Docroot", f"Cartella ~/{subdomain} lasciata sul server (usa --with-files per rimuoverla).")
         log("Fine", f"Sottodominio {subdomain}.{ROOT_DOMAIN} rimosso (o simulato con --dry-run).")
