@@ -32,7 +32,20 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # fill in your own credentials, never commit this file
+chmod 600 .env         # it holds live API tokens
 ```
+
+## Tests
+
+```
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+The tests cover the pure functions only — name validation, path safety
+checks, and response/parameter handling — so they run without network access
+or credentials. Anything that touches an API is exercised with `--dry-run`
+instead.
 
 ## Running via GitHub Actions
 
