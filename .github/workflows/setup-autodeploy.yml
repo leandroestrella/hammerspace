@@ -26,6 +26,16 @@ on:
         required: false
         type: boolean
         default: false
+      skip_secrets:
+        description: "Non toccare i secret del repository"
+        required: false
+        type: boolean
+        default: false
+      skip_ftp:
+        description: "Non toccare l'account FTP: esiste già (con skip_secrets + force aggiorna solo il workflow)"
+        required: false
+        type: boolean
+        default: false
       force:
         description: "Sovrascrive un workflow di deploy già presente e diverso"
         required: false
@@ -68,11 +78,15 @@ jobs:
           BRANCH: ${{ inputs.branch }}
           DRY_RUN: ${{ inputs.dry_run }}
           SKIP_WORKFLOW_FILE: ${{ inputs.skip_workflow_file }}
+          SKIP_SECRETS: ${{ inputs.skip_secrets }}
+          SKIP_FTP: ${{ inputs.skip_ftp }}
           FORCE: ${{ inputs.force }}
         run: |
           ARGS=("$PROJECT" --repo "$REPO" --branch "$BRANCH")
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
           [ "$SKIP_WORKFLOW_FILE" = "true" ] && ARGS+=(--skip-workflow-file)
+          [ "$SKIP_SECRETS" = "true" ] && ARGS+=(--skip-secrets)
+          [ "$SKIP_FTP" = "true" ] && ARGS+=(--skip-ftp)
           [ "$FORCE" = "true" ] && ARGS+=(--force)
           # Niente --show-password: qui finirebbe nel log del run. La password
           # generata è già dentro il secret FTP_PASSWORD del repository di

@@ -41,6 +41,8 @@ way to see a traceback in full).
 | `branch` | `master` | pushes to this branch trigger a deploy |
 | `dry_run` | off | prints every call it would make, touches nothing |
 | `skip_workflow_file` | off | creates the ftp account and the secrets, prints the workflow instead of committing it |
+| `skip_secrets` | off | leave the repository secrets alone |
+| `skip_ftp` | off | leave the ftp account alone; with `skip_secrets` and `force`, this is the repair path |
 | `force` | off | overwrite a deploy workflow that's already there and different |
 
 there's no `show_password` input on purpose: in actions it would print a live
@@ -57,6 +59,10 @@ reset it from cpanel → ftp accounts.
 | `confirm` | — | retype the project name; anything else and the job stops before installing anything |
 | `branch` | `master` | the branch to remove the deploy workflow from |
 | `dry_run` | off | prints every call it would make, touches nothing |
+
+teardown has no such skip inputs, deliberately: it is all-or-nothing, so a
+half-torn-down project can't be produced by a mis-clicked checkbox. the
+terminal has the flags if you genuinely need a partial one.
 
 teardown removes the workflow, the three secrets and the ftp account. it never
 touches the deployed files — `destroy=0` on the cpanel call, deliberately, since
@@ -111,7 +117,48 @@ python3 setup_autodeploy.py lab --repo you/lab --delete
 
 `--with-files` without `--delete`, or `--purge` without `--with-files`, is
 rejected with a clear message rather than silently ignored. same for
-`--show-password` with `--delete`.
+`--show-password` with `--delete`, and for `--skip-ftp` without either
+`--skip-secrets` or an explicit `--ftp-password`.
+
+### every flag
+
+the examples above cover the common paths; these are all of them.
+
+#### `create_subdomain.py <name>`
+
+| flag | default | what it does |
+| --- | --- | --- |
+| `--dry-run` | off | prints every call it would make, touches nothing |
+| `--delete` | off | removes the subdomain instead of creating it; leaves the files |
+| `--with-files` | off | with `--delete`: also move the document root to `~/.trash` |
+| `--purge` | off | with `--with-files`: delete permanently instead of trashing |
+| `--with-dns-api` | off | create a dedicated namecheap a record — usually unnecessary, see [dns](#dns) |
+| `--skip-autossl` | off | skip the autossl trigger (the workflow passes it by default) |
+| `--skip-https-redirect` | off | skip writing the `.htaccess` redirect block |
+
+#### `setup_autodeploy.py <project> --repo owner/name`
+
+| flag | default | what it does |
+| --- | --- | --- |
+| `--repo` | **required** | the repo to deploy *from*, as `owner/name` |
+| `--dry-run` | off | prints every call it would make, touches nothing |
+| `--branch` | `master` | pushes to this branch trigger a deploy |
+| `--ftp-user` | the project name | login half of the ftp account; the full login is `<login>@<project>.<root-domain>` |
+| `--ftp-password` | generated | 24 random characters if omitted. passing it on the command line leaves it in your shell history |
+| `--show-password` | off | print the generated password. for winscp; never use it in actions, where it lands in the run log |
+| `--ftp-server` | `SERVER_IP` | the value written into the `FTP_SERVER` secret, if it differs from the env var |
+| `--dir` | the project name | the ftp account's home, relative to the cpanel home. must match the subdomain's document root or the deploy lands where nothing serves it |
+| `--server-dir` | `./` | subdirectory of the ftp home to publish into. a trailing `/` is added if you leave it off, because the action treats a bare name as a filename prefix |
+| `--skip-secrets` | off | leave the repository secrets alone |
+| `--skip-ftp` | off | leave the ftp account alone and skip the "already exists" check — the repair path, see below |
+| `--skip-workflow-file` | off | print the workflow instead of committing it. useful when the token has no `workflow` scope |
+| `--force` | off | replace a deploy workflow that's already there and different |
+| `--delete` | off | tear the whole thing down: workflow, secrets, ftp account. never touches the files |
+
+`--ftp-server` and `--dir` exist for the case where the account doesn't follow
+the conventions the rest of the repo assumes — a project whose document root
+isn't `~/<name>`, or a host reachable at something other than `SERVER_IP`.
+neither is needed for a subdomain that `create_subdomain.py` made.
 
 ## what a subdomain creation actually does
 
@@ -163,6 +210,9 @@ rewrites the workflow and nothing else. it needs `--skip-secrets` (or an
 explicit `--ftp-password`), because without creating the account there's no
 password to put in the secret — writing one anyway would leave `FTP_PASSWORD`
 holding a value that opens nothing.
+
+the same three are available as `skip_ftp` / `skip_secrets` / `force` inputs on
+the **setup auto deploy** workflow, so the repair is a click too.
 
 ### the generated workflow isn't the one in the doc
 
