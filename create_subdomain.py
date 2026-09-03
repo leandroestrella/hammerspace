@@ -71,9 +71,9 @@ def require(vars_dict, names):
     missing = [n for n in names if not vars_dict.get(n)]
     if missing:
         sys.exit(
-            "Variabili d'ambiente mancanti: "
+            "Missing environment variables: "
             + ", ".join(missing)
-            + "\nVedi .env.example per la lista completa."
+            + "\nSee .env.example for the full list."
         )
 
 
@@ -99,8 +99,8 @@ def valida_subdomain(subdomain):
     """
     if not SUBDOMAIN_RE.match(subdomain or ""):
         raise ValueError(
-            f"Nome sottodominio non valido: {subdomain!r}. "
-            "Ammessi solo lettere minuscole, cifre e trattini (non a inizio/fine), max 63 caratteri."
+            f"Invalid subdomain name: {subdomain!r}. "
+            "Only lowercase letters, digits and hyphens (not leading or trailing), max 63 characters."
         )
     return subdomain
 
@@ -128,9 +128,9 @@ def api2_call(module, func, extra_params, dove_controllare, timeout=90):
         resp = requests.get(url, headers=cpanel_headers(), params=params, timeout=timeout)
     except requests.exceptions.Timeout:
         raise RuntimeError(
-            f"Timeout in attesa della risposta (l'endpoint API2 di questo server e' lento). "
-            f"L'operazione potrebbe comunque essere andata a buon fine: controlla in "
-            f"{dove_controllare} prima di riprovare, per evitare richieste duplicate."
+            f"Timed out waiting for a response (this server's API2 endpoint is slow). "
+            f"The operation may well have completed anyway: check {dove_controllare} "
+            f"before retrying, so you don't act twice."
         )
     return parse_api2_result(resp.json(), dove_controllare)
 
@@ -141,7 +141,7 @@ def parse_api2_result(data, dove_controllare):
     if result.get("result") not in (1, "1"):
         motivo = result.get("reason") or data.get("cpanelresult", {}).get("error") or data
         raise RuntimeError(
-            f"Operazione fallita: {motivo}. In alternativa procedi manualmente da {dove_controllare}."
+            f"Operation failed: {motivo}. Otherwise do it by hand from {dove_controllare}."
         )
     return result
 
@@ -164,7 +164,7 @@ def create_subdomain(subdomain, dry_run=False):
         # ~/public_html/<subdomain>) — confermato dal setup reale dell'account.
         "dir": subdomain,
     }
-    log("cPanel", f"Creazione sottodominio {subdomain}.{ROOT_DOMAIN} -> {params['dir']}")
+    log("cPanel", f"Creating subdomain {subdomain}.{ROOT_DOMAIN} -> {params['dir']}")
     if dry_run:
         log("cPanel", f"[dry-run] GET {url} params={params}")
         return True
@@ -173,8 +173,8 @@ def create_subdomain(subdomain, dry_run=False):
     data = resp.json()
     if not data.get("status"):
         errors = data.get("errors") or [data.get("error")]
-        raise RuntimeError(f"Creazione sottodominio fallita: {errors}")
-    log("cPanel", "Sottodominio creato con successo.")
+        raise RuntimeError(f"Subdomain creation failed: {errors}")
+    log("cPanel", "Subdomain created.")
     return True
 
 
@@ -193,13 +193,13 @@ def delete_subdomain(subdomain, dry_run=False):
     # rimasta è la vecchia API2 (deprecata ma ancora attiva sulla maggior
     # parte dei server) tramite l'endpoint /json-api/cpanel.
     params = {"domain": f"{subdomain}.{ROOT_DOMAIN}"}
-    log("cPanel", f"Rimozione sottodominio {subdomain}.{ROOT_DOMAIN} (via API2, legacy)")
+    log("cPanel", f"Removing subdomain {subdomain}.{ROOT_DOMAIN} (via API2, legacy)")
     if dry_run:
         log("cPanel", f"[dry-run] API2 SubDomain::delsubdomain params={params}")
         return True
 
     api2_call("SubDomain", "delsubdomain", params, "cPanel -> Domains")
-    log("cPanel", "Sottodominio rimosso. (I file nella document root NON vengono cancellati automaticamente.)")
+    log("cPanel", "Subdomain removed. (Files in the document root are NOT deleted automatically.)")
     return True
 
 
@@ -224,7 +224,7 @@ def get_docroot(subdomain, dry_run=False):
     )
     data = resp.json()
     if not data.get("status"):
-        raise RuntimeError(f"Impossibile leggere i domini dell'account: {data.get('errors')}")
+        raise RuntimeError(f"Could not read the account's domains: {data.get('errors')}")
 
     fqdn = f"{subdomain}.{ROOT_DOMAIN}"
     return estrai_docroot(data.get("data"), fqdn)
@@ -238,11 +238,11 @@ def estrai_docroot(righe, fqdn):
         docroot = row.get("documentroot")
         home = row.get("homedir")
         if not docroot or not home:
-            raise RuntimeError(f"cPanel non riporta document root e home per {fqdn}.")
+            raise RuntimeError(f"cPanel reports no document root and home for {fqdn}.")
         return docroot, home
     raise RuntimeError(
-        f"Sottodominio {fqdn} non trovato tra i domini dell'account: "
-        f"impossibile determinarne la document root."
+        f"Subdomain {fqdn} not found among the account's domains: "
+        f"cannot determine its document root."
     )
 
 
@@ -256,15 +256,15 @@ def assert_docroot_sicura(docroot, home):
     percorso = (docroot or "").rstrip("/")
     home = (home or "").rstrip("/")
     if not percorso or not home:
-        raise RuntimeError("Document root o home non determinabili: non procedo.")
+        raise RuntimeError("Document root or home could not be determined: not proceeding.")
     if not percorso.startswith(home + "/"):
         raise RuntimeError(
-            f"La document root {percorso!r} e' fuori dalla home {home!r}: non procedo."
+            f"Document root {percorso!r} is outside the home {home!r}: not proceeding."
         )
     relativo = percorso[len(home) + 1:]
     if not relativo or relativo == "public_html" or ".." in relativo.split("/"):
         raise RuntimeError(
-            f"Document root non sicura da cancellare: {percorso!r}."
+            f"Document root is not safe to delete: {percorso!r}."
         )
     return percorso
 
@@ -285,21 +285,21 @@ def delete_docroot(subdomain, docroot=None, home=None, purge=False, dry_run=Fals
     )
 
     op = "unlink" if purge else "trash"
-    modo = "cancellazione DEFINITIVA" if purge else "spostamento nel cestino (~/.trash)"
+    modo = "PERMANENT deletion" if purge else "move to the trash (~/.trash)"
 
     if dry_run:
         log(
             "Docroot",
-            f"[dry-run] {modo} della document root di {subdomain}.{ROOT_DOMAIN} "
-            f"(API2 Fileman::fileop op={op}; il path reale viene letto da cPanel a run time)",
+            f"[dry-run] {modo} of the document root of {subdomain}.{ROOT_DOMAIN} "
+            f"(API2 Fileman::fileop op={op}; the real path is read from cPanel at run time)",
         )
         return True
 
     if not docroot or not home:
-        raise RuntimeError("Document root o home non fornite: non procedo alla cancellazione.")
+        raise RuntimeError("Document root or home not provided: not deleting anything.")
 
     target = assert_docroot_sicura(docroot, home)
-    log("Docroot", f"{modo} di {target}")
+    log("Docroot", f"{modo} of {target}")
 
     api2_call(
         "Fileman",
@@ -308,9 +308,9 @@ def delete_docroot(subdomain, docroot=None, home=None, purge=False, dry_run=Fals
         "cPanel -> File Manager",
     )
     if purge:
-        log("Docroot", "Cartella cancellata definitivamente.")
+        log("Docroot", "Folder deleted permanently.")
     else:
-        log("Docroot", "Cartella spostata nel cestino (recuperabile da cPanel -> File Manager -> Trash).")
+        log("Docroot", "Folder moved to the trash (restore it from cPanel -> File Manager -> Trash).")
     return True
 
 
@@ -371,14 +371,14 @@ def add_dns_record(subdomain, dry_run=False):
     if dry_run:
         log(
             "Namecheap",
-            f"[dry-run] Leggerei/scriverei i record DNS di {ROOT_DOMAIN} "
-            f"per aggiungere {subdomain} -> {SERVER_IP} (nessuna chiamata eseguita).",
+            f"[dry-run] Would read and rewrite the DNS records of {ROOT_DOMAIN} "
+            f"to add {subdomain} -> {SERVER_IP} (no call made).",
         )
         return True
     # NB: Namecheap non ha un "addHost": setHosts SOSTITUISCE l'intera lista
     # di record del dominio. Quindi leggiamo prima quelli esistenti (getHosts)
     # e li reinviamo tutti insieme al nuovo record.
-    log("Namecheap", f"Lettura record DNS esistenti per {ROOT_DOMAIN}")
+    log("Namecheap", f"Reading the existing DNS records for {ROOT_DOMAIN}")
     get_resp = requests.get(
         NAMECHEAP_API_BASE,
         params=namecheap_params("namecheap.domains.dns.getHosts", {"SLD": sld, "TLD": tld}),
@@ -389,7 +389,7 @@ def add_dns_record(subdomain, dry_run=False):
     root = ET.fromstring(get_resp.text)
     if root.get("Status") != "OK":
         errs = [e.text for e in root.findall(".//nc:Errors/nc:Error", ns)]
-        raise RuntimeError(f"getHosts fallita: {errs}")
+        raise RuntimeError(f"getHosts failed: {errs}")
 
     # setHosts riscrive TUTTI i record del dominio: quello che non viene
     # rimandato indietro sparisce. Quindi il round-trip deve conservare anche
@@ -416,10 +416,10 @@ def add_dns_record(subdomain, dry_run=False):
     ddns = [h["HostName"] for h in hosts if h["IsDDNSEnabled"] and h["HostName"] != subdomain]
     if ddns:
         raise RuntimeError(
-            f"I record {ddns} hanno il Dynamic DNS attivo e setHosts non permette di "
-            f"conservarlo: riscrivendoli verrebbero declassati a record statici. "
-            f"Aggiungi il record a mano dal pannello Namecheap, oppure rimuovi il "
-            f"flag DDNS se non ti serve piu'."
+            f"Records {ddns} have Dynamic DNS enabled and setHosts has no way to preserve "
+            f"it: rewriting them would downgrade them to static records. Add the record "
+            f"by hand from the Namecheap panel, or remove the DDNS flag if you no "
+            f"longer need it."
         )
 
     # EmailType NON e' opzionale in pratica: se non viene rimandato indietro,
@@ -446,7 +446,7 @@ def add_dns_record(subdomain, dry_run=False):
 
     extra = costruisci_set_hosts(hosts, sld, tld, email_type)
 
-    log("Namecheap", f"Scrittura {len(hosts)} record (incluso il nuovo A per '{subdomain}')")
+    log("Namecheap", f"Writing {len(hosts)} records (including the new A record for '{subdomain}')")
     set_resp = requests.get(
         NAMECHEAP_API_BASE,
         params=namecheap_params("namecheap.domains.dns.setHosts", extra),
@@ -456,11 +456,11 @@ def add_dns_record(subdomain, dry_run=False):
     root = ET.fromstring(set_resp.text)
     if root.get("Status") != "OK":
         errs = [e.text for e in root.findall(".//nc:Errors/nc:Error", ns)]
-        raise RuntimeError(f"setHosts fallita: {errs}")
+        raise RuntimeError(f"setHosts failed: {errs}")
     ok = root.find(".//nc:DomainDNSSetHostsResult", ns)
     if ok is None or ok.get("IsSuccess") != "true":
-        raise RuntimeError("setHosts non ha confermato il successo.")
-    log("Namecheap", f"Record A {subdomain}.{ROOT_DOMAIN} -> {SERVER_IP} creato.")
+        raise RuntimeError("setHosts did not confirm success.")
+    log("Namecheap", f"A record {subdomain}.{ROOT_DOMAIN} -> {SERVER_IP} created.")
     return True
 
 
@@ -476,13 +476,13 @@ def run_autossl(dry_run=False, wait_seconds=0):
     if not WHM_API_TOKEN:
         log(
             "AutoSSL",
-            "WHM_API_TOKEN non impostato: salto questo step (serve un token WHM/root, "
-            "diverso dal token utente cPanel - vedi .env.example).",
+            "WHM_API_TOKEN is not set: skipping this step (it needs a WHM/root token, "
+            "which is not the same thing as the cPanel user token - see .env.example).",
         )
         return False
     url = f"https://{WHM_HOST}:2087/json-api/start_autossl_check"
     params = {"user": CPANEL_USER, "api.version": 1}
-    log("AutoSSL", f"Avvio AutoSSL per l'utente {CPANEL_USER}")
+    log("AutoSSL", f"Starting AutoSSL for user {CPANEL_USER}")
     if dry_run:
         log("AutoSSL", f"[dry-run] GET {url} params={params}")
         return True
@@ -490,11 +490,11 @@ def run_autossl(dry_run=False, wait_seconds=0):
     resp = requests.get(url, headers=whm_headers(), params=params, timeout=30)
     data = resp.json()
     if data.get("metadata", {}).get("result") != 1:
-        raise RuntimeError(f"start_autossl_check fallita: {data.get('metadata')}")
-    log("AutoSSL", "Check AutoSSL avviato. L'emissione del certificato è asincrona: "
-                    "verifica lo stato in WHM > SSL/TLS Status dopo qualche minuto.")
+        raise RuntimeError(f"start_autossl_check failed: {data.get('metadata')}")
+    log("AutoSSL", "AutoSSL check started. Certificate issuance is asynchronous: "
+                    "check WHM > SSL/TLS Status in a few minutes.")
     if wait_seconds:
-        log("AutoSSL", f"Attendo {wait_seconds}s prima di continuare...")
+        log("AutoSSL", f"Waiting {wait_seconds}s before continuing...")
         time.sleep(wait_seconds)
     return True
 
@@ -513,7 +513,7 @@ def run_autossl(dry_run=False, wait_seconds=0):
 # --------------------------------------------------------------------------- #
 
 HTACCESS_SNIPPET = """
-# --- BEGIN force-https (aggiunto automaticamente) ---
+# --- BEGIN force-https (added automatically) ---
 RewriteEngine On
 RewriteCond %{HTTPS} off
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
@@ -543,9 +543,9 @@ def force_https_redirect(subdomain, dry_run=False):
     # a <subdomain>. Su un sottodominio preesistente andrebbe invece letta
     # con get_docroot (come fa il percorso di cancellazione).
     doc_root = subdomain
-    log("HTTPS redirect", f"Scrittura regole di redirect in {doc_root}/.htaccess")
+    log("HTTPS redirect", f"Writing redirect rules to {doc_root}/.htaccess")
     if dry_run:
-        log("HTTPS redirect", f"[dry-run] Aggiungerei a {doc_root}/.htaccess:\n{HTACCESS_SNIPPET}")
+        log("HTTPS redirect", f"[dry-run] Would append to {doc_root}/.htaccess:\n{HTACCESS_SNIPPET}")
         return True
 
     read_url = f"https://{CPANEL_HOST}:2083/execute/Fileman/get_file_content"
@@ -566,12 +566,12 @@ def force_https_redirect(subdomain, dry_run=False):
         existing = (data.get("data") or {}).get("content", "")
     elif not file_inesistente(data):
         raise RuntimeError(
-            f"Lettura di {doc_root}/.htaccess fallita: {data.get('errors') or resp.status_code}. "
-            "Non proseguo: sovrascriverei un file esistente senza conoscerne il contenuto."
+            f"Could not read {doc_root}/.htaccess: {data.get('errors') or resp.status_code}. "
+            "Not proceeding: that would overwrite an existing file without knowing what is in it."
         )
 
     if "force-https" in existing:
-        log("HTTPS redirect", ".htaccess contiene già il blocco force-https, nessuna modifica.")
+        log("HTTPS redirect", ".htaccess already contains the force-https block, nothing to do.")
         return True
 
     new_content = existing + HTACCESS_SNIPPET
@@ -585,8 +585,8 @@ def force_https_redirect(subdomain, dry_run=False):
     )
     data = resp.json()
     if not data.get("status"):
-        raise RuntimeError(f"Scrittura .htaccess fallita: {data.get('errors')}")
-    log("HTTPS redirect", "Redirect HTTPS forzato attivato via .htaccess.")
+        raise RuntimeError(f"Writing .htaccess failed: {data.get('errors')}")
+    log("HTTPS redirect", "Forced HTTPS redirect enabled via .htaccess.")
     return True
 
 
@@ -595,35 +595,41 @@ def force_https_redirect(subdomain, dry_run=False):
 # --------------------------------------------------------------------------- #
 
 def main():
-    parser = argparse.ArgumentParser(description="Automatizza la creazione di un sottodominio")
-    parser.add_argument("subdomain", help="Nome del sottodominio, es. 'lab'")
-    parser.add_argument("--dry-run", action="store_true", help="Mostra le chiamate senza eseguirle")
+    parser = argparse.ArgumentParser(description="Automate creating a subdomain on cPanel")
+    parser.add_argument("subdomain", help="Subdomain name, e.g. 'lab'")
+    parser.add_argument("--dry-run", action="store_true", help="Print every call it would make, and make none")
     parser.add_argument(
         "--delete",
         action="store_true",
-        help="Rimuove il sottodominio da cPanel invece di crearlo (i file nella "
-             "document root non vengono cancellati, vedi --with-files).",
+        help="Remove the subdomain from cPanel instead of creating it. Files in "
+             "the document root are left alone; see --with-files.",
     )
     parser.add_argument(
         "--with-files",
         action="store_true",
-        help="Solo con --delete: cancella anche la cartella document root "
-             "(~/<subdomain>), spostandola nel cestino ~/.trash.",
+        help="With --delete only: also delete the document root folder "
+             "(~/<subdomain>), moving it to the ~/.trash bin.",
     )
     parser.add_argument(
         "--purge",
         action="store_true",
-        help="Solo con --with-files: cancella la cartella in modo DEFINITIVO "
-             "invece di spostarla nel cestino.",
+        help="With --with-files only: delete the folder PERMANENTLY instead of "
+             "moving it to the trash.",
     )
     parser.add_argument(
         "--with-dns-api",
         action="store_true",
-        help="Chiama comunque l'API Namecheap per creare un record dedicato "
-             "(non necessario se hai un wildcard '*' -> SERVER_IP, vedi sotto).",
+        help="Call the Namecheap API to create a dedicated A record anyway "
+             "(unnecessary if you have a wildcard '*' -> SERVER_IP, see below).",
     )
-    parser.add_argument("--skip-autossl", action="store_true")
-    parser.add_argument("--skip-https-redirect", action="store_true")
+    parser.add_argument(
+        "--skip-autossl", action="store_true",
+        help="Skip the AutoSSL trigger (it needs a WHM token).",
+    )
+    parser.add_argument(
+        "--skip-https-redirect", action="store_true",
+        help="Skip writing the force-https block into .htaccess.",
+    )
     args = parser.parse_args()
 
     subdomain = args.subdomain.strip().lower()
@@ -635,9 +641,9 @@ def main():
     # I flag distruttivi hanno senso solo in combinazione con --delete:
     # meglio fallire subito che ignorarli in silenzio.
     if args.with_files and not args.delete:
-        parser.error("--with-files si usa solo insieme a --delete.")
+        parser.error("--with-files is only used together with --delete.")
     if args.purge and not args.with_files:
-        parser.error("--purge si usa solo insieme a --with-files.")
+        parser.error("--purge is only used together with --with-files.")
 
     if args.delete:
         # La docroot va letta PRIMA di rimuovere il sottodominio: dopo, cPanel
@@ -657,8 +663,8 @@ def main():
                 purge=args.purge, dry_run=args.dry_run,
             )
         else:
-            log("Docroot", f"Cartella ~/{subdomain} lasciata sul server (usa --with-files per rimuoverla).")
-        log("Fine", f"Sottodominio {subdomain}.{ROOT_DOMAIN} rimosso (o simulato con --dry-run).")
+            log("Docroot", f"Folder ~/{subdomain} left on the server (use --with-files to remove it).")
+        log("Done", f"Subdomain {subdomain}.{ROOT_DOMAIN} removed (or simulated, with --dry-run).")
         return
 
     create_subdomain(subdomain, dry_run=args.dry_run)
@@ -671,19 +677,19 @@ def main():
     if args.with_dns_api:
         add_dns_record(subdomain, dry_run=args.dry_run)
     else:
-        log("Namecheap", "Step saltato: coperto dal record wildcard '*' (usa --with-dns-api per forzarlo).")
+        log("Namecheap", "Step skipped: covered by the wildcard '*' record (use --with-dns-api to force it).")
 
     if not args.skip_autossl:
         run_autossl(dry_run=args.dry_run)
     else:
-        log("AutoSSL", "Step saltato (--skip-autossl).")
+        log("AutoSSL", "Step skipped (--skip-autossl).")
 
     if not args.skip_https_redirect:
         force_https_redirect(subdomain, dry_run=args.dry_run)
     else:
-        log("HTTPS redirect", "Step saltato (--skip-https-redirect).")
+        log("HTTPS redirect", "Step skipped (--skip-https-redirect).")
 
-    log("Fine", f"Sottodominio {subdomain}.{ROOT_DOMAIN} pronto (o simulato con --dry-run).")
+    log("Done", f"Subdomain {subdomain}.{ROOT_DOMAIN} ready (or simulated, with --dry-run).")
 
 
 if __name__ == "__main__":

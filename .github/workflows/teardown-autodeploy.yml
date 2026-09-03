@@ -4,24 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       project:
-        description: "Nome del progetto/sottodominio (es. 'lab')"
+        description: "Project/subdomain name (e.g. 'lab')"
         required: true
         type: string
       repo:
-        description: "Repository di destinazione, formato 'owner/nome'"
+        description: "Target repository, as 'owner/name'"
         required: true
         type: string
       confirm:
-        description: "Riscrivi qui lo stesso nome del progetto per confermare"
+        description: "Retype the same project name here to confirm"
         required: true
         type: string
       branch:
-        description: "Branch da cui rimuovere il workflow di deploy"
+        description: "Branch to remove the deploy workflow from"
         required: false
         type: string
         default: master
       dry_run:
-        description: "Mostra le chiamate senza eseguirle"
+        description: "Print every call it would make, and make none"
         required: false
         type: boolean
         default: false
@@ -36,17 +36,17 @@ jobs:
       # La conferma va verificata PRIMA di installare o eseguire qualsiasi cosa,
       # e senza interpolare gli input nello script: entrambi passano dall'env e
       # vengono confrontati da bash come stringhe.
-      - name: Verifica la conferma
+      - name: Check the confirmation
         env:
           PROJECT: ${{ inputs.project }}
           CONFIRM: ${{ inputs.confirm }}
         run: |
           if [ "$PROJECT" != "$CONFIRM" ]; then
-            echo "::error::La conferma non corrisponde al progetto. Nessuna modifica effettuata."
-            echo "Atteso il nome ripetuto identico nel campo 'confirm'."
+            echo "::error::The confirmation does not match the project. Nothing was changed."
+            echo "The 'confirm' field must repeat the name exactly."
             exit 1
           fi
-          echo "Conferma valida per '$PROJECT'."
+          echo "Confirmation valid for '$PROJECT'."
 
       - uses: actions/checkout@v4
 
@@ -56,7 +56,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Smonta il deploy automatico
+      - name: Tear down the auto deploy
         env:
           # Lo smontaggio tocca cPanel e GitHub: niente SERVER_IP, che serve
           # solo a scrivere il secret FTP_SERVER in creazione.

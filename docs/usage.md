@@ -240,9 +240,9 @@ way to check you typed the right name.
 
 ```
 [cPanel] [dry-run] GET https://host:2083/execute/SubDomain/addsubdomain params={'domain': 'lab', ...}
-[Namecheap] Step saltato: coperto dal record wildcard '*'
-[AutoSSL] Step saltato (--skip-autossl).
-[HTTPS redirect] [dry-run] Aggiungerei a lab/.htaccess: ...
+[Namecheap] Step skipped: covered by the wildcard '*' record
+[AutoSSL] Step skipped (--skip-autossl).
+[HTTPS redirect] [dry-run] Would append to lab/.htaccess: ...
 ```
 
 one consequence worth knowing: in a dry run the delete path can't show you the

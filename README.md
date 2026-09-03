@@ -130,6 +130,12 @@ guard, response parsing, dns parameter construction, secret encryption, the
 generated workflow — so they run without network or credentials. anything
 touching an api is exercised with `--dry-run` instead.
 
+one convention worth knowing before you read the source: **comments and
+docstrings are in italian, everything a user ever sees is in english.** log
+lines, error messages, `--help`, the workflow inputs in the actions tab, and
+the deploy workflow this writes into your repo are all english. the italian is
+the author thinking out loud about his own infrastructure, and stays there.
+
 ## license
 
 [mit](LICENSE)

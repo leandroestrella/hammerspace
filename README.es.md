@@ -134,6 +134,13 @@ la document root, el parseo de respuestas, la construcción de parámetros dns,
 el cifrado de los secrets, el workflow generado — así que se ejecutan sin red
 ni credenciales. todo lo que toca una api se comprueba con `--dry-run`.
 
+una convención que conviene saber antes de leer el código: **los comentarios y
+docstrings están en italiano, y todo lo que ve un usuario está en inglés.** los
+logs, los mensajes de error, `--help`, los inputs de los workflows en la
+pestaña actions y el workflow de despliegue que escribe en tu repo son todos en
+inglés. el italiano es el autor pensando sobre su propia infraestructura, y ahí
+se queda.
+
 ## licencia
 
 [mit](LICENSE)

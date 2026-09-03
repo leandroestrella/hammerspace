@@ -105,7 +105,7 @@ def test_estrae_docroot_annidata():
 
 
 def test_dominio_non_trovato():
-    with pytest.raises(RuntimeError, match="non trovato"):
+    with pytest.raises(RuntimeError, match="not found"):
         cs.estrai_docroot(RIGHE, "inesistente.esempio.com")
 
 

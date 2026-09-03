@@ -4,26 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       subdomain:
-        description: "Nome del sottodominio (es. 'lab')"
+        description: "Subdomain name (e.g. 'lab')"
         required: true
         type: string
       dry_run:
-        description: "Mostra le chiamate senza eseguirle"
+        description: "Print every call it would make, and make none"
         required: false
         type: boolean
         default: false
       with_dns_api:
-        description: "Crea anche un record DNS dedicato via Namecheap API"
+        description: "Also create a dedicated DNS record via the Namecheap API"
         required: false
         type: boolean
         default: false
       skip_autossl:
-        description: "Salta lo step AutoSSL"
+        description: "Skip the AutoSSL step"
         required: false
         type: boolean
         default: true
       skip_https_redirect:
-        description: "Salta la scrittura del blocco .htaccess per l'HTTPS redirect"
+        description: "Skip writing the .htaccess block for the HTTPS redirect"
         required: false
         type: boolean
         default: false
@@ -43,7 +43,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Crea il sottodominio
+      - name: Create the subdomain
         env:
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
           CPANEL_USER: ${{ secrets.CPANEL_USER }}

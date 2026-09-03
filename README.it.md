@@ -132,6 +132,12 @@ root, parsing delle risposte, costruzione dei parametri dns, cifratura dei
 secret, workflow generato — quindi girano senza rete e senza credenziali.
 tutto ciò che tocca un'api si verifica invece con `--dry-run`.
 
+una convenzione da sapere prima di leggere il sorgente: **commenti e docstring
+in italiano, tutto quello che vede un utente in inglese.** log, messaggi
+d'errore, `--help`, gli input dei workflow nella tab actions e il workflow di
+deploy scritto nel tuo repo sono tutti in inglese. l'italiano è l'autore che
+ragiona sulla propria infrastruttura, e resta lì.
+
 ## licenza
 
 [mit](LICENSE)

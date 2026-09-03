@@ -4,25 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       subdomain:
-        description: "Nome del sottodominio da rimuovere (es. 'lab')"
+        description: "Subdomain to remove (e.g. 'lab')"
         required: true
         type: string
       confirm:
-        description: "Riscrivi qui lo stesso nome per confermare"
+        description: "Retype the same name here to confirm"
         required: true
         type: string
       with_files:
-        description: "Cancella anche la cartella (finisce nel cestino ~/.trash)"
+        description: "Also delete the folder (it goes to the ~/.trash bin)"
         required: false
         type: boolean
         default: false
       purge:
-        description: "Solo con with_files: cancellazione DEFINITIVA invece del cestino"
+        description: "With with_files only: PERMANENT deletion instead of the trash"
         required: false
         type: boolean
         default: false
       dry_run:
-        description: "Mostra le chiamate senza eseguirle"
+        description: "Print every call it would make, and make none"
         required: false
         type: boolean
         default: false
@@ -37,17 +37,17 @@ jobs:
       # La conferma va verificata PRIMA di installare o eseguire qualsiasi cosa,
       # e senza interpolare gli input nello script: entrambi passano dall'env e
       # vengono confrontati da bash come stringhe.
-      - name: Verifica la conferma
+      - name: Check the confirmation
         env:
           SUBDOMAIN: ${{ inputs.subdomain }}
           CONFIRM: ${{ inputs.confirm }}
         run: |
           if [ "$SUBDOMAIN" != "$CONFIRM" ]; then
-            echo "::error::La conferma non corrisponde al sottodominio. Nessuna modifica effettuata."
-            echo "Atteso il nome ripetuto identico nel campo 'confirm'."
+            echo "::error::The confirmation does not match the subdomain. Nothing was changed."
+            echo "The 'confirm' field must repeat the name exactly."
             exit 1
           fi
-          echo "Conferma valida per '$SUBDOMAIN'."
+          echo "Confirmation valid for '$SUBDOMAIN'."
 
       - uses: actions/checkout@v4
 
@@ -57,7 +57,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Rimuovi il sottodominio
+      - name: Remove the subdomain
         env:
           # La cancellazione tocca solo cPanel: niente SERVER_IP, WHM o Namecheap.
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}

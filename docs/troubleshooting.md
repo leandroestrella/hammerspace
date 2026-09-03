@@ -1,6 +1,6 @@
 # troubleshooting
 
-## "variabili d'ambiente mancanti: ..."
+## "missing environment variables: ..."
 
 the message names exactly which ones. locally, you probably didn't load the
 file:

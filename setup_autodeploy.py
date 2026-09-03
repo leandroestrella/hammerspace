@@ -80,9 +80,9 @@ def require(vars_dict, names):
     missing = [n for n in names if not vars_dict.get(n)]
     if missing:
         sys.exit(
-            "Variabili d'ambiente mancanti: "
+            "Missing environment variables: "
             + ", ".join(missing)
-            + "\nVedi .env.example per la lista completa."
+            + "\nSee .env.example for the full list."
         )
 
 
@@ -108,8 +108,8 @@ def valida_progetto(nome):
     """Rifiuta i nomi di progetto non validi prima di usarli in path e URL."""
     if not PROGETTO_RE.match(nome or ""):
         raise ValueError(
-            f"Nome progetto non valido: {nome!r}. "
-            "Ammessi solo lettere minuscole, cifre e trattini (non a inizio/fine), max 63 caratteri."
+            f"Invalid project name: {nome!r}. "
+            "Only lowercase letters, digits and hyphens (not leading or trailing), max 63 characters."
         )
     return nome
 
@@ -122,9 +122,9 @@ def valida_ftp_user(user):
     """
     if not FTP_USER_RE.match(user or ""):
         raise ValueError(
-            f"Login FTP non valido: {user!r}. "
-            "Ammessi lettere minuscole, cifre, punto, trattino e underscore "
-            "(non a inizio/fine), max 32 caratteri."
+            f"Invalid FTP login: {user!r}. "
+            "Only lowercase letters, digits, dot, hyphen and underscore "
+            "(not leading or trailing), max 32 characters."
         )
     return user
 
@@ -137,8 +137,8 @@ def valida_repo(repo):
     """
     if not REPO_RE.match(repo or ""):
         raise ValueError(
-            f"Repository non valido: {repo!r}. Formato atteso: 'owner/nome' "
-            "(es. 'leandroestrella/hammerspace')."
+            f"Invalid repository: {repo!r}. Expected format: 'owner/name' "
+            "(e.g. 'leandroestrella/hammerspace')."
         )
     owner, _, nome = repo.partition("/")
     return owner, nome
@@ -159,7 +159,7 @@ def genera_password(lunghezza=24):
     in un secret di GitHub e nell'account FTP del server.
     """
     if lunghezza < 12:
-        raise ValueError("Lunghezza password troppo bassa: minimo 12 caratteri.")
+        raise ValueError("Password length too low: 12 characters minimum.")
     return "".join(secrets.choice(ALFABETO_PASSWORD) for _ in range(lunghezza))
 
 
@@ -178,8 +178,8 @@ def cpanel_headers():
 def parse_uapi_result(data, cosa):
     """Estrae l'esito da una risposta UAPI, alzando un errore parlante."""
     if not data.get("status"):
-        errori = data.get("errors") or ([data["error"]] if data.get("error") else ["nessun dettaglio"])
-        raise RuntimeError(f"{cosa} fallita: {errori}")
+        errori = data.get("errors") or ([data["error"]] if data.get("error") else ["no detail given"])
+        raise RuntimeError(f"{cosa} failed: {errori}")
     return data.get("data")
 
 
@@ -212,7 +212,7 @@ def crea_account_ftp(user, dominio, password, homedir, dry_run=False):
         "homedir": homedir,
         "quota": 0,  # illimitata
     }
-    log("cPanel", f"Creazione account FTP {ftp_login_completo(user, dominio)} -> ~/{homedir}")
+    log("cPanel", f"Creating FTP account {ftp_login_completo(user, dominio)} -> ~/{homedir}")
     if dry_run:
         # La password non viene mai stampata, nemmeno in dry-run.
         censurati = dict(params, **{"pass": "***"})
@@ -220,8 +220,8 @@ def crea_account_ftp(user, dominio, password, homedir, dry_run=False):
         return True
 
     resp = requests.post(url, headers=cpanel_headers(), data=params, timeout=30)
-    parse_uapi_result(resp.json(), "Creazione account FTP")
-    log("cPanel", "Account FTP creato (quota illimitata).")
+    parse_uapi_result(resp.json(), "Creating the FTP account")
+    log("cPanel", "FTP account created (unlimited quota).")
     return True
 
 
@@ -243,14 +243,14 @@ def elimina_account_ftp(user, dominio, dry_run=False):
     )
     url = f"https://{CPANEL_HOST}:2083/execute/Ftp/delete_ftp"
     params = {"user": user, "domain": dominio, "destroy": 0}
-    log("cPanel", f"Rimozione account FTP {ftp_login_completo(user, dominio)}")
+    log("cPanel", f"Removing FTP account {ftp_login_completo(user, dominio)}")
     if dry_run:
         log("cPanel", f"[dry-run] POST {url} params={params}")
         return True
 
     resp = requests.post(url, headers=cpanel_headers(), data=params, timeout=30)
-    parse_uapi_result(resp.json(), "Rimozione account FTP")
-    log("cPanel", "Account FTP rimosso. (I file NON vengono cancellati: destroy=0.)")
+    parse_uapi_result(resp.json(), "Removing the FTP account")
+    log("cPanel", "FTP account removed. (Files are NOT deleted: destroy=0.)")
     return True
 
 
@@ -264,7 +264,7 @@ def account_ftp_esiste(user, dominio, dry_run=False):
         return False
     url = f"https://{CPANEL_HOST}:2083/execute/Ftp/list_ftp"
     resp = requests.get(url, headers=cpanel_headers(), timeout=30)
-    righe = parse_uapi_result(resp.json(), "Lettura account FTP")
+    righe = parse_uapi_result(resp.json(), "Listing the FTP accounts")
     return cerca_account_ftp(righe, ftp_login_completo(user, dominio))
 
 
@@ -307,14 +307,14 @@ def spiega_errore_github(resp, cosa):
     """
     if resp.status_code in (401,):
         return (
-            f"{cosa} fallita: token GitHub non valido o scaduto (401). "
-            "Rigenera il PAT e aggiorna GITHUB_PAT."
+            f"{cosa} failed: the GitHub token is invalid or expired (401). "
+            "Regenerate the PAT and update GITHUB_PAT."
         )
     if resp.status_code == 404:
         return (
-            f"{cosa} fallita: repository non trovato (404). GitHub risponde 404 "
-            "anche quando il repository esiste ma il token non ha accesso: "
-            "controlla il nome, e che il PAT copra questo repository."
+            f"{cosa} failed: repository not found (404). GitHub also answers 404 when "
+            "the repository exists but the token cannot see it: check the name, and "
+            "that the PAT covers this repository."
         )
     if resp.status_code == 403:
         dettaglio = ""
@@ -324,13 +324,13 @@ def spiega_errore_github(resp, cosa):
             dettaglio = resp.text[:200]
         if "workflow" in dettaglio.lower():
             return (
-                f"{cosa} fallita: il token non puo' scrivere file dentro "
-                ".github/workflows/ (403). Serve lo scope 'workflow' su un PAT "
-                "classico, o 'Workflows: write' su uno fine-grained. "
-                "In alternativa usa --skip-workflow-file e committa il file a mano."
+                f"{cosa} failed: the token cannot write files under .github/workflows/ "
+                "(403). That needs the 'workflow' scope on a classic PAT, or "
+                "'Workflows: write' on a fine-grained one. Otherwise use "
+                "--skip-workflow-file and commit the file by hand."
             )
-        return f"{cosa} fallita: permesso negato (403). {dettaglio}"
-    return f"{cosa} fallita: HTTP {resp.status_code}. {resp.text[:300]}"
+        return f"{cosa} failed: permission denied (403). {dettaglio}"
+    return f"{cosa} failed: HTTP {resp.status_code}. {resp.text[:300]}"
 
 
 def github_get(url, cosa, ok_404=False):
@@ -362,7 +362,7 @@ def cifra_secret(public_key_b64, valore):
 def scrivi_secret(owner, repo, nome, valore, public_key, key_id, dry_run=False):
     url = f"{GITHUB_API}/repos/{owner}/{repo}/actions/secrets/{nome}"
     if dry_run:
-        log("GitHub", f"[dry-run] PUT {url} (valore cifrato, non mostrato)")
+        log("GitHub", f"[dry-run] PUT {url} (encrypted value, not shown)")
         return True
 
     payload = {
@@ -371,16 +371,16 @@ def scrivi_secret(owner, repo, nome, valore, public_key, key_id, dry_run=False):
     }
     resp = requests.put(url, headers=github_headers(), json=payload, timeout=30)
     if not resp.ok:
-        raise RuntimeError(spiega_errore_github(resp, f"Scrittura del secret {nome}"))
+        raise RuntimeError(spiega_errore_github(resp, f"Writing secret {nome}"))
     # 201 = creato, 204 = aggiornato. Entrambi vanno bene.
-    log("GitHub", f"Secret {nome} {'creato' if resp.status_code == 201 else 'aggiornato'}.")
+    log("GitHub", f"Secret {nome} {'created' if resp.status_code == 201 else 'updated'}.")
     return True
 
 
 def scrivi_secrets(owner, repo, valori, dry_run=False):
     """Scrive i tre secret FTP_* sul repository di destinazione."""
     require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
-    log("GitHub", f"Scrittura dei secret {', '.join(SECRET_NAMES)} su {owner}/{repo}")
+    log("GitHub", f"Writing secrets {', '.join(SECRET_NAMES)} on {owner}/{repo}")
     if dry_run:
         for nome in SECRET_NAMES:
             scrivi_secret(owner, repo, nome, None, None, None, dry_run=True)
@@ -388,7 +388,7 @@ def scrivi_secrets(owner, repo, valori, dry_run=False):
 
     chiave = github_get(
         f"{GITHUB_API}/repos/{owner}/{repo}/actions/secrets/public-key",
-        "Lettura della chiave pubblica del repository",
+        "Reading the repository public key",
     )
     for nome in SECRET_NAMES:
         scrivi_secret(
@@ -400,7 +400,7 @@ def scrivi_secrets(owner, repo, valori, dry_run=False):
 
 def elimina_secrets(owner, repo, dry_run=False):
     require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
-    log("GitHub", f"Rimozione dei secret {', '.join(SECRET_NAMES)} da {owner}/{repo}")
+    log("GitHub", f"Removing secrets {', '.join(SECRET_NAMES)} from {owner}/{repo}")
     for nome in SECRET_NAMES:
         url = f"{GITHUB_API}/repos/{owner}/{repo}/actions/secrets/{nome}"
         if dry_run:
@@ -410,11 +410,11 @@ def elimina_secrets(owner, repo, dry_run=False):
         if resp.status_code == 404:
             # Gia' assente: non e' un errore, e dirlo evita di far ripartire
             # una rimozione a mano che non serve.
-            log("GitHub", f"Secret {nome} non presente, niente da rimuovere.")
+            log("GitHub", f"Secret {nome} is not there, nothing to remove.")
             continue
         if not resp.ok:
-            raise RuntimeError(spiega_errore_github(resp, f"Rimozione del secret {nome}"))
-        log("GitHub", f"Secret {nome} rimosso.")
+            raise RuntimeError(spiega_errore_github(resp, f"Removing secret {nome}"))
+        log("GitHub", f"Secret {nome} removed.")
     return True
 
 
@@ -439,11 +439,11 @@ def elimina_secrets(owner, repo, dry_run=False):
 # --------------------------------------------------------------------------- #
 
 WORKFLOW_TEMPLATE = """\
-# Generato da hammerspace/setup_autodeploy.py
+# Generated by hammerspace/setup_autodeploy.py
 # https://github.com/leandroestrella/hammerspace
 #
-# Ogni push su "{branch}" pubblica il repository via FTPS sull'account
-# creato in cPanel. Le credenziali stanno nei secret del repository.
+# Every push to "{branch}" publishes this repository over FTPS to the account
+# created in cPanel. The credentials live in this repository's secrets.
 
 name: Deploy to cPanel
 
@@ -453,14 +453,14 @@ on:
       - "{branch}"
   workflow_dispatch:
 
-# Il minimo che serve: actions/checkout su un repository PRIVATO ha bisogno
-# di contents: read. Con "permissions: {{}}" il GITHUB_TOKEN resta senza
-# permessi e il checkout fallisce con un fuorviante "Repository not found".
+# The minimum needed: actions/checkout on a PRIVATE repository requires
+# contents: read. With "permissions: {{}}" the GITHUB_TOKEN has no permissions
+# at all and the checkout fails with a misleading "Repository not found".
 permissions:
   contents: read
 
-# Due deploy contemporanei sulla stessa cartella FTP si sovrascrivono a
-# vicenda e lasciano il file di stato incoerente: si accodano invece.
+# Two deploys running at once over the same FTP directory overwrite each
+# other and leave the state file inconsistent, so they queue instead.
 concurrency:
   group: "deploy-to-cpanel-{branch}"
   cancel-in-progress: false
@@ -493,11 +493,11 @@ def costruisci_workflow(branch, server_dir="./"):
     # doppio o un a capo la chiuderebbero, cambiando il file generato.
     if not branch or any(c.isspace() or c in '"\\' for c in branch):
         raise ValueError(
-            f"Nome branch non valido: {branch!r}. Niente spazi, virgolette o backslash."
+            f"Invalid branch name: {branch!r}. No spaces, quotes or backslashes."
         )
     server_dir = server_dir or "./"
     if any(c.isspace() or c in '"\\' for c in server_dir):
-        raise ValueError(f"server-dir non valida: {server_dir!r}.")
+        raise ValueError(f"Invalid server-dir: {server_dir!r}.")
     if not server_dir.endswith("/"):
         # Senza la barra finale l'action tratta il valore come un prefisso di
         # nome file invece che come cartella.
@@ -508,7 +508,7 @@ def costruisci_workflow(branch, server_dir="./"):
 def leggi_file_repo(owner, repo, path, branch):
     """Legge un file dal repository di destinazione: (sha, contenuto) o None."""
     url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/{path}?ref={branch}"
-    data = github_get(url, f"Lettura di {path}", ok_404=True)
+    data = github_get(url, f"Reading {path}", ok_404=True)
     if data is None:
         return None
     contenuto = base64.b64decode(data.get("content", "")).decode("utf-8", "replace")
@@ -530,14 +530,14 @@ def controlla_workflow_legacy(owner, repo, branch, force=False, dry_run=False):
     if not esistente:
         return False
     messaggio = (
-        f"{WORKFLOW_PATH_LEGACY} esiste gia' su {owner}/{repo}: e' il nome che usa "
-        f"la procedura manuale. Aggiungere anche {WORKFLOW_PATH} farebbe partire DUE "
-        f"deploy a ogni push, che si sovrascrivono a vicenda. Rimuovi il file "
-        f"vecchio, oppure usa --skip-workflow-file per non aggiungerne un secondo."
+        f"{WORKFLOW_PATH_LEGACY} already exists on {owner}/{repo}: that is the name "
+        f"the manual procedure uses. Adding {WORKFLOW_PATH} as well would fire TWO "
+        f"deploys on every push, overwriting each other. Remove the old file, or use "
+        f"--skip-workflow-file so a second one isn't added."
     )
     if not force:
         raise RuntimeError(messaggio)
-    log("GitHub", f"ATTENZIONE (--force): {messaggio}")
+    log("GitHub", f"WARNING (--force): {messaggio}")
     return True
 
 
@@ -550,9 +550,9 @@ def scrivi_workflow(owner, repo, branch, contenuto, path=WORKFLOW_PATH,
     perche' un workflow gia' li' puo' essere stato modificato a mano.
     """
     require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
-    log("GitHub", f"Scrittura di {path} su {owner}/{repo} (branch {branch})")
+    log("GitHub", f"Writing {path} on {owner}/{repo} (branch {branch})")
     if dry_run:
-        log("GitHub", f"[dry-run] Committerei {path}:\n{contenuto}")
+        log("GitHub", f"[dry-run] Would commit {path}:\n{contenuto}")
         return True
 
     esistente = leggi_file_repo(owner, repo, path, branch)
@@ -560,15 +560,15 @@ def scrivi_workflow(owner, repo, branch, contenuto, path=WORKFLOW_PATH,
     if esistente:
         sha, vecchio = esistente
         if vecchio == contenuto:
-            log("GitHub", f"{path} e' gia' identico, nessun commit.")
+            log("GitHub", f"{path} is already identical, no commit.")
             return True
         if not force:
             raise RuntimeError(
-                f"{path} esiste gia' su {owner}/{repo} con un contenuto diverso. "
-                "Non lo sovrascrivo: potrebbe essere stato modificato a mano. "
-                "Controlla il file e ripassa con --force se vuoi rimpiazzarlo."
+                f"{path} already exists on {owner}/{repo} with different content. "
+                "Not overwriting it: it may have been edited by hand. Check the file "
+                "and pass --force if you do want to replace it."
             )
-        log("GitHub", f"{path} esiste ed e' diverso: lo sostituisco (--force).")
+        log("GitHub", f"{path} exists and differs: replacing it (--force).")
 
     payload = {
         "message": (
@@ -584,21 +584,21 @@ def scrivi_workflow(owner, repo, branch, contenuto, path=WORKFLOW_PATH,
     url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/{path}"
     resp = requests.put(url, headers=github_headers(), json=payload, timeout=30)
     if not resp.ok:
-        raise RuntimeError(spiega_errore_github(resp, f"Scrittura di {path}"))
-    log("GitHub", f"{path} committato. Il push fa partire subito il primo deploy.")
+        raise RuntimeError(spiega_errore_github(resp, f"Writing {path}"))
+    log("GitHub", f"{path} committed. That push starts the first deploy right away.")
     return True
 
 
 def elimina_workflow(owner, repo, branch, path=WORKFLOW_PATH, dry_run=False):
     require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
-    log("GitHub", f"Rimozione di {path} da {owner}/{repo} (branch {branch})")
+    log("GitHub", f"Removing {path} from {owner}/{repo} (branch {branch})")
     if dry_run:
         log("GitHub", f"[dry-run] DELETE {path}")
         return True
 
     esistente = leggi_file_repo(owner, repo, path, branch)
     if not esistente:
-        log("GitHub", f"{path} non presente, niente da rimuovere.")
+        log("GitHub", f"{path} is not there, nothing to remove.")
         return False
     sha, _ = esistente
 
@@ -606,8 +606,8 @@ def elimina_workflow(owner, repo, branch, path=WORKFLOW_PATH, dry_run=False):
     payload = {"message": "Remove cPanel FTP deploy workflow", "sha": sha, "branch": branch}
     resp = requests.delete(url, headers=github_headers(), json=payload, timeout=30)
     if not resp.ok:
-        raise RuntimeError(spiega_errore_github(resp, f"Rimozione di {path}"))
-    log("GitHub", f"{path} rimosso.")
+        raise RuntimeError(spiega_errore_github(resp, f"Removing {path}"))
+    log("GitHub", f"{path} removed.")
     return True
 
 
@@ -622,25 +622,25 @@ def elimina_workflow(owner, repo, branch, path=WORKFLOW_PATH, dry_run=False):
 def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
               skip_ftp=False, force=False, dry_run=False):
     if dry_run:
-        log("Preflight", "[dry-run] Salto i controlli preliminari (sono chiamate di rete).")
+        log("Preflight", "[dry-run] Skipping the preliminary checks (they are network calls).")
         return
 
-    log("Preflight", f"Controllo accesso a {owner}/{repo}")
+    log("Preflight", f"Checking access to {owner}/{repo}")
     require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
-    info = github_get(f"{GITHUB_API}/repos/{owner}/{repo}", "Lettura del repository")
+    info = github_get(f"{GITHUB_API}/repos/{owner}/{repo}", "Reading the repository")
 
     # Un branch inesistente farebbe fallire la scrittura del workflow DOPO che
     # account FTP e secret esistono gia'.
     rami = github_get(
         f"{GITHUB_API}/repos/{owner}/{repo}/branches/{branch}",
-        f"Lettura del branch {branch}",
+        f"Reading branch {branch}",
         ok_404=True,
     )
     if rami is None:
         raise RuntimeError(
-            f"Il branch {branch!r} non esiste su {owner}/{repo} "
-            f"(il branch di default e' {info.get('default_branch')!r}). "
-            "Passa --branch con quello giusto."
+            f"Branch {branch!r} does not exist on {owner}/{repo} "
+            f"(the default branch is {info.get('default_branch')!r}). "
+            "Pass --branch with the right one."
         )
 
     if not skip_workflow:
@@ -648,13 +648,13 @@ def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
 
     if not skip_ftp and account_ftp_esiste(ftp_user, dominio):
         raise RuntimeError(
-            f"L'account FTP {ftp_login_completo(ftp_user, dominio)} esiste gia'. "
-            "Usa --ftp-user per sceglierne un altro, oppure rimuovi quello "
-            "esistente con --delete (la password non e' recuperabile: se ti "
-            "serve, resettala da cPanel -> FTP Accounts). Per aggiornare solo il "
-            "workflow di un deploy gia' configurato: --skip-ftp --skip-secrets --force."
+            f"The FTP account {ftp_login_completo(ftp_user, dominio)} already exists. "
+            "Use --ftp-user to pick another one, or remove the existing account with "
+            "--delete (the password is not recoverable: if you need it, reset it from "
+            "cPanel -> FTP Accounts). To update only the workflow of a deploy that is "
+            "already set up: --skip-ftp --skip-secrets --force."
         )
-    log("Preflight", "Controlli superati.")
+    log("Preflight", "Checks passed.")
 
 
 # --------------------------------------------------------------------------- #
@@ -663,77 +663,77 @@ def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Automatizza il deploy automatico da GitHub a cPanel via FTP"
+        description="Automate push-to-deploy from GitHub to cPanel over FTP"
     )
-    parser.add_argument("progetto", help="Nome del progetto/sottodominio, es. 'lab'")
+    parser.add_argument("progetto", help="Project/subdomain name, e.g. 'lab'")
     parser.add_argument(
         "--repo",
         required=True,
-        help="Repository GitHub di destinazione, formato 'owner/nome'.",
+        help="Target GitHub repository, as 'owner/name'.",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Mostra le chiamate senza eseguirle")
+    parser.add_argument("--dry-run", action="store_true", help="Print every call it would make, and make none")
     parser.add_argument(
         "--branch",
         default="master",
-        help="Branch il cui push fa partire il deploy (default: master).",
+        help="Branch whose pushes trigger a deploy (default: master).",
     )
     parser.add_argument(
         "--ftp-user",
-        help="Login FTP da creare (default: il nome del progetto). "
-             "Il login completo sara' <login>@<progetto>.<ROOT_DOMAIN>.",
+        help="FTP login to create (default: the project name). The full login "
+             "will be <login>@<project>.<ROOT_DOMAIN>.",
     )
     parser.add_argument(
         "--ftp-password",
-        help="Password dell'account FTP (default: generata a caso, 24 caratteri). "
-             "Passarla da riga di comando la lascia nella storia della shell.",
+        help="FTP account password (default: 24 random characters). Passing it on "
+             "the command line leaves it in your shell history.",
     )
     parser.add_argument(
         "--show-password",
         action="store_true",
-        help="Stampa la password generata. Utile in locale per configurare "
-             "WinSCP; da evitare in Actions, dove finirebbe nel log del run.",
+        help="Print the generated password. Useful locally for setting up WinSCP; "
+             "avoid it in Actions, where it would land in the run log.",
     )
     parser.add_argument(
         "--ftp-server",
-        help="Valore del secret FTP_SERVER (default: SERVER_IP).",
+        help="Value written into the FTP_SERVER secret (default: SERVER_IP).",
     )
     parser.add_argument(
         "--dir",
         dest="homedir",
-        help="Home dell'account FTP, relativa alla home cPanel "
-             "(default: il nome del progetto, come la document root del sottodominio).",
+        help="FTP account home, relative to the cPanel home (default: the project "
+             "name, matching the subdomain's document root).",
     )
     parser.add_argument(
         "--server-dir",
         default="./",
-        help="Cartella di destinazione del deploy, relativa alla home FTP (default: ./).",
+        help="Directory the deploy publishes into, relative to the FTP home (default: ./).",
     )
     parser.add_argument(
-        "--skip-secrets", action="store_true", help="Non toccare i secret del repository."
+        "--skip-secrets", action="store_true", help="Leave the repository secrets alone."
     )
     parser.add_argument(
         "--skip-ftp",
         action="store_true",
-        help="Non toccare l'account FTP: si assume che esista gia'. Serve a "
-             "riparare un deploy gia' configurato (--skip-ftp --skip-secrets "
-             "--force aggiorna solo il workflow) senza rifare tutto da capo.",
+        help="Leave the FTP account alone, assuming it already exists. This is the "
+             "repair path: --skip-ftp --skip-secrets --force rewrites only the "
+             "workflow, without tearing everything down and starting over.",
     )
     parser.add_argument(
         "--skip-workflow-file",
         action="store_true",
-        help="Non committare il workflow di deploy (lo stampa e basta). "
-             "Utile se il token non ha lo scope 'workflow'.",
+        help="Don't commit the deploy workflow, just print it. Useful when the "
+             "token has no 'workflow' scope.",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Sovrascrive il workflow di deploy se ne esiste gia' uno diverso.",
+        help="Overwrite the deploy workflow if a different one is already there.",
     )
     parser.add_argument(
         "--delete",
         action="store_true",
-        help="Smonta il deploy automatico: rimuove workflow, secret e account "
-             "FTP. I file sul server NON vengono toccati.",
+        help="Tear the auto deploy down: removes the workflow, the secrets and the "
+             "FTP account. Files on the server are NOT touched.",
     )
     args = parser.parse_args()
 
@@ -746,15 +746,15 @@ def main():
         parser.error(str(e))
 
     if args.force and args.delete:
-        parser.error("--force riguarda solo la scrittura del workflow, non --delete.")
+        parser.error("--force only affects writing the workflow, not --delete.")
     if args.show_password and args.delete:
-        parser.error("--show-password non ha senso con --delete.")
+        parser.error("--show-password makes no sense with --delete.")
     # Senza creare l'account non si conosce la password, e i secret sarebbero
     # scritti con un valore che non apre niente: meglio dirlo subito.
     if args.skip_ftp and not (args.delete or args.skip_secrets or args.ftp_password):
         parser.error(
-            "--skip-ftp non conosce la password dell'account esistente: "
-            "aggiungi --skip-secrets, oppure passa --ftp-password."
+            "--skip-ftp does not know the existing account's password: add "
+            "--skip-secrets, or pass --ftp-password."
         )
 
     require({"ROOT_DOMAIN": ROOT_DOMAIN}, ["ROOT_DOMAIN"])
@@ -767,7 +767,7 @@ def main():
         # run sembrerebbe riuscito pur non avendo smontato niente.
         if not (args.skip_workflow_file and args.skip_secrets) and not args.dry_run:
             require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
-            github_get(f"{GITHUB_API}/repos/{owner}/{repo}", "Lettura del repository")
+            github_get(f"{GITHUB_API}/repos/{owner}/{repo}", "Reading the repository")
 
         # Ordine inverso rispetto alla creazione: prima si spegne il workflow,
         # poi si tolgono le credenziali che usa. Al contrario, un deploy
@@ -777,10 +777,10 @@ def main():
         if not args.skip_secrets:
             elimina_secrets(owner, repo, dry_run=args.dry_run)
         if args.skip_ftp:
-            log("cPanel", "Step saltato (--skip-ftp): l'account FTP resta dov'e'.")
+            log("cPanel", "Step skipped (--skip-ftp): the FTP account stays where it is.")
         else:
             elimina_account_ftp(ftp_user, dominio, dry_run=args.dry_run)
-        log("Fine", f"Deploy automatico di {owner}/{repo} smontato (o simulato con --dry-run).")
+        log("Done", f"Auto deploy for {owner}/{repo} torn down (or simulated, with --dry-run).")
         return
 
     preflight(
@@ -794,7 +794,7 @@ def main():
     require({"SERVER_IP (o --ftp-server)": ftp_server}, ["SERVER_IP (o --ftp-server)"])
 
     if args.skip_ftp:
-        log("cPanel", f"Step saltato (--skip-ftp): uso l'account {ftp_login_completo(ftp_user, dominio)} esistente.")
+        log("cPanel", f"Step skipped (--skip-ftp): using the existing account {ftp_login_completo(ftp_user, dominio)}.")
     else:
         crea_account_ftp(ftp_user, dominio, password, homedir, dry_run=args.dry_run)
 
@@ -809,11 +809,11 @@ def main():
             dry_run=args.dry_run,
         )
     else:
-        log("GitHub", "Step saltato (--skip-secrets): i secret vanno creati a mano.")
+        log("GitHub", "Step skipped (--skip-secrets): the secrets have to be created by hand.")
 
     workflow = costruisci_workflow(args.branch, args.server_dir)
     if args.skip_workflow_file:
-        log("GitHub", f"Step saltato (--skip-workflow-file). Contenuto di {WORKFLOW_PATH}:")
+        log("GitHub", f"Step skipped (--skip-workflow-file). Content of {WORKFLOW_PATH}:")
         print(workflow)
     else:
         scrivi_workflow(
@@ -824,16 +824,16 @@ def main():
     if args.skip_ftp:
         pass  # nessuna password generata: non c'e' niente da dire
     elif args.show_password and not args.dry_run:
-        log("cPanel", f"Password FTP di {ftp_login_completo(ftp_user, dominio)}: {password}")
+        log("cPanel", f"FTP password for {ftp_login_completo(ftp_user, dominio)}: {password}")
     elif not args.ftp_password and not args.dry_run:
         log(
             "cPanel",
-            "La password generata non viene stampata: e' gia' nel secret FTP_PASSWORD. "
-            "Se ti serve per WinSCP, rilanciala con --show-password o resettala da "
-            "cPanel -> FTP Accounts.",
+            "The generated password is not printed: it is already in the FTP_PASSWORD "
+            "secret. If you need it for WinSCP, re-run with --show-password or reset it "
+            "from cPanel -> FTP Accounts.",
         )
 
-    log("Fine", f"Deploy automatico di {owner}/{repo} attivo (o simulato con --dry-run).")
+    log("Done", f"Auto deploy for {owner}/{repo} is live (or simulated, with --dry-run).")
 
 
 if __name__ == "__main__":

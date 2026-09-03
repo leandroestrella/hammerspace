@@ -4,40 +4,40 @@ on:
   workflow_dispatch:
     inputs:
       project:
-        description: "Nome del progetto/sottodominio (es. 'lab')"
+        description: "Project/subdomain name (e.g. 'lab')"
         required: true
         type: string
       repo:
-        description: "Repository di destinazione, formato 'owner/nome'"
+        description: "Target repository, as 'owner/name'"
         required: true
         type: string
       branch:
-        description: "Branch il cui push fa partire il deploy"
+        description: "Branch whose pushes trigger a deploy"
         required: false
         type: string
         default: master
       dry_run:
-        description: "Mostra le chiamate senza eseguirle"
+        description: "Print every call it would make, and make none"
         required: false
         type: boolean
         default: false
       skip_workflow_file:
-        description: "Non committare il workflow sul repository (lo stampa e basta)"
+        description: "Don't commit the workflow to the repository, just print it"
         required: false
         type: boolean
         default: false
       skip_secrets:
-        description: "Non toccare i secret del repository"
+        description: "Leave the repository secrets alone"
         required: false
         type: boolean
         default: false
       skip_ftp:
-        description: "Non toccare l'account FTP: esiste già (con skip_secrets + force aggiorna solo il workflow)"
+        description: "Leave the FTP account alone, it already exists (with skip_secrets + force this updates only the workflow)"
         required: false
         type: boolean
         default: false
       force:
-        description: "Sovrascrive un workflow di deploy già presente e diverso"
+        description: "Overwrite a deploy workflow that is already there and different"
         required: false
         type: boolean
         default: false
@@ -58,7 +58,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Configura il deploy automatico
+      - name: Set up the auto deploy
         env:
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
           CPANEL_USER: ${{ secrets.CPANEL_USER }}

@@ -251,7 +251,7 @@ def test_uapi_successo():
 @pytest.mark.parametrize(
     "data",
     [
-        {"status": 0, "errors": ["Il nome utente esiste gia'."]},
+        {"status": 0, "errors": ["The username already exists."]},
         {"status": 0, "error": "boom"},
         {"status": 0},
         {},
@@ -263,8 +263,8 @@ def test_uapi_fallimento(data):
 
 
 def test_uapi_errore_riporta_il_motivo():
-    with pytest.raises(RuntimeError, match="esiste gia"):
-        sa.parse_uapi_result({"status": 0, "errors": ["Il nome utente esiste gia'."]}, "Cosa")
+    with pytest.raises(RuntimeError, match="already exists"):
+        sa.parse_uapi_result({"status": 0, "errors": ["The username already exists."]}, "Something")
 
 
 # --------------------------------------------------------------------------- #
@@ -327,7 +327,7 @@ class RispostaFinta:
 
 def test_404_spiega_che_puo_essere_un_permesso():
     msg = sa.spiega_errore_github(RispostaFinta(404), "Lettura del repository")
-    assert "non ha accesso" in msg
+    assert "cannot see it" in msg
 
 
 def test_403_su_workflow_indica_lo_scope_mancante():
