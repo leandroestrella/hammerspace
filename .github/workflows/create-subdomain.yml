@@ -27,6 +27,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_starter_page:
+        description: "Skip writing a placeholder index.html with the PostHog snippet"
+        required: false
+        type: boolean
+        default: false
 
 # Il job non usa il GITHUB_TOKEN: non gli serve nessuno scope.
 permissions: {}
@@ -68,10 +73,12 @@ jobs:
           WITH_DNS_API: ${{ inputs.with_dns_api }}
           SKIP_AUTOSSL: ${{ inputs.skip_autossl }}
           SKIP_HTTPS_REDIRECT: ${{ inputs.skip_https_redirect }}
+          SKIP_STARTER_PAGE: ${{ inputs.skip_starter_page }}
         run: |
           ARGS=("$SUBDOMAIN")
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
           [ "$WITH_DNS_API" = "true" ] && ARGS+=(--with-dns-api)
           [ "$SKIP_AUTOSSL" = "true" ] && ARGS+=(--skip-autossl)
           [ "$SKIP_HTTPS_REDIRECT" = "true" ] && ARGS+=(--skip-https-redirect)
+          [ "$SKIP_STARTER_PAGE" = "true" ] && ARGS+=(--skip-starter-page)
           python create_subdomain.py "${ARGS[@]}"

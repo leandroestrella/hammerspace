@@ -354,3 +354,41 @@ def test_403_senza_json_non_esplode():
 
 def test_status_inatteso_riporta_il_codice():
     assert "500" in sa.spiega_errore_github(RispostaFinta(500, text="boom"), "Cosa")
+
+
+# --------------------------------------------------------------------------- #
+# Controllo dello snippet PostHog (LNDR-129)
+# --------------------------------------------------------------------------- #
+
+def _blob(path):
+    return {"path": path, "type": "blob"}
+
+
+def test_candidati_solo_pagine_e_index_prima():
+    voci = [_blob("src/about.html"), _blob("README.md"), _blob("web/index.html"),
+            _blob("style.css"), {"path": "src", "type": "tree"}, _blob("index.php")]
+    assert sa.candidati_pagine(voci) == ["index.php", "web/index.html", "src/about.html"]
+
+
+def test_candidati_escludono_dipendenze():
+    voci = [_blob("node_modules/pkg/index.html"), _blob("vendor/x/index.html"), _blob("index.html")]
+    assert sa.candidati_pagine(voci) == ["index.html"]
+
+
+def test_candidati_rispettano_il_limite():
+    voci = [_blob(f"p{i}.html") for i in range(50)]
+    assert len(sa.candidati_pagine(voci, limite=5)) == 5
+
+
+def test_candidati_albero_vuoto():
+    assert sa.candidati_pagine(None) == []
+
+
+@pytest.mark.parametrize("testo,atteso", [
+    ("<script>posthog.init('phc_x', {})</script>", True),
+    ("<script>window.posthog = 1</script>", False),
+    ("", False),
+    (None, False),
+])
+def test_contiene_snippet(testo, atteso):
+    assert sa.contiene_snippet(testo) is atteso

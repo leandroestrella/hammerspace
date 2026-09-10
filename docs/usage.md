@@ -21,6 +21,7 @@ way to see a traceback in full).
 | `with_dns_api` | off | also creates a dedicated namecheap a record — usually unnecessary, see [dns](#dns) |
 | `skip_autossl` | **on** | leaves ssl alone; on by default because autossl needs a whm token nobody has set yet |
 | `skip_https_redirect` | off | skips writing the `.htaccess` redirect block |
+| `skip_starter_page` | off | skips writing a placeholder `index.html` that already carries the PostHog snippet; never overwrites an existing index |
 
 ### delete subdomain
 
@@ -44,6 +45,8 @@ way to see a traceback in full).
 | `skip_secrets` | off | leave the repository secrets alone |
 | `skip_ftp` | off | leave the ftp account alone; with `skip_secrets` and `force`, this is the repair path |
 | `force` | off | overwrite a deploy workflow that's already there and different |
+
+after the workflow step, the tool scans the target repo's pages for `posthog.init` and warns if it's missing: the first deploy replaces the tracked starter page, so a repo without the snippet silently stops reporting. the canonical snippet is [`assets/posthog-snippet.html`](../assets/posthog-snippet.html).
 
 there's no `show_password` input on purpose: in actions it would print a live
 credential into the run log. the generated password goes straight into the

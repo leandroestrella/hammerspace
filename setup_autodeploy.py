@@ -619,6 +619,68 @@ def elimina_workflow(owner, repo, branch, path=WORKFLOW_PATH, dry_run=False):
 # FTP orfano sul server, che poi va tolto a mano.
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Controllo dello snippet PostHog nel repository (LNDR-129)
+#
+# create_subdomain.py mette online una pagina iniziale gia' strumentata, ma
+# il primo deploy la sostituisce con l'HTML del repository: se quel
+# repository non include lo snippet, il sottodominio smette di essere
+# tracciato senza che nessuno se ne accorga. Qui si avvisa e basta: e' un
+# controllo di buon senso, non deve mai far fallire il setup.
+# --------------------------------------------------------------------------- #
+
+SNIPPET_MARKER = "posthog.init("
+ESTENSIONI_PAGINE = (".html", ".htm", ".php", ".njk", ".liquid")
+CARTELLE_IGNORATE = ("node_modules/", "vendor/", ".git/")
+
+
+def candidati_pagine(voci, limite=25):
+    """Dai file dell'albero git, quelli che possono contenere lo snippet.
+
+    Prima gli index (dove lo snippet di solito sta), poi il resto; cartelle di
+    dipendenze escluse; al massimo `limite` file, per non fare cento richieste.
+    """
+    percorsi = [
+        v.get("path", "") for v in voci or []
+        if v.get("type") == "blob"
+        and v.get("path", "").lower().endswith(ESTENSIONI_PAGINE)
+        and not any(c in v.get("path", "") for c in CARTELLE_IGNORATE)
+    ]
+    percorsi.sort(key=lambda x: (0 if x.rsplit("/", 1)[-1].lower().startswith("index.") else 1, x.count("/"), x))
+    return percorsi[:limite]
+
+
+def contiene_snippet(testo):
+    return SNIPPET_MARKER in (testo or "")
+
+
+def controlla_snippet_posthog(owner, repo, branch, dry_run=False):
+    log("PostHog", f"Checking that {owner}/{repo}@{branch} includes the PostHog snippet")
+    if dry_run:
+        log("PostHog", "[dry-run] Would scan the repository's pages for posthog.init.")
+        return None
+    try:
+        albero = github_get(
+            f"{GITHUB_API}/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
+            "Reading the repository tree",
+        )
+        for path in candidati_pagine((albero or {}).get("tree")):
+            letto = leggi_file_repo(owner, repo, path, branch)
+            if letto and contiene_snippet(letto[1]):
+                log("PostHog", f"Snippet found in {path}: the site stays tracked after deploys.")
+                return True
+    except RuntimeError as e:
+        log("PostHog", f"WARNING: could not check the snippet ({e}). Verify it by hand.")
+        return None
+    log(
+        "PostHog",
+        "WARNING: no posthog.init found in the repository's pages. The first deploy will "
+        "replace the tracked starter page, and the site will stop reporting to PostHog. "
+        "Paste assets/posthog-snippet.html from hammerspace into the site's <head>.",
+    )
+    return False
+
+
 def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
               skip_ftp=False, force=False, dry_run=False):
     if dry_run:
@@ -820,6 +882,8 @@ def main():
             owner, repo, args.branch, workflow,
             force=args.force, dry_run=args.dry_run,
         )
+
+    controlla_snippet_posthog(owner, repo, args.branch, dry_run=args.dry_run)
 
     if args.skip_ftp:
         pass  # nessuna password generata: non c'e' niente da dire

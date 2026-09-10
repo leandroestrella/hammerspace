@@ -206,3 +206,43 @@ def test_api2_successo_come_stringa():
 def test_api2_fallimento(data):
     with pytest.raises(RuntimeError):
         cs.parse_api2_result(data, "cPanel -> Domains")
+
+
+# --------------------------------------------------------------------------- #
+# Pagina iniziale con PostHog (LNDR-129)
+# --------------------------------------------------------------------------- #
+
+def test_snippet_canonico_e_cookieless():
+    s = cs.carica_snippet_posthog()
+    assert "posthog.init(" in s
+    assert "cookieless_mode: 'always'" in s
+    assert "person_profiles: 'never'" in s
+    assert "api_host: 'https://eu.i.posthog.com'" in s
+
+
+def test_snippet_non_identifica_mai():
+    s = cs.carica_snippet_posthog()
+    # Lo stub elenca "identify" e "alias" come nomi di metodo: vietate sono le chiamate.
+    assert "posthog.identify(" not in s
+    assert "posthog.alias(" not in s
+
+
+def test_snippet_incompleto_rifiutato(tmp_path):
+    finto = tmp_path / "snippet.html"
+    finto.write_text("<script>posthog.init('phc_x', {})</script>")
+    with pytest.raises(RuntimeError):
+        cs.carica_snippet_posthog(finto)
+
+
+def test_starter_page_contiene_snippet_e_titolo():
+    pagina = cs.costruisci_starter_page("lab.example.com", cs.carica_snippet_posthog())
+    assert pagina.startswith("<!DOCTYPE html>")
+    assert "<title>lab.example.com</title>" in pagina
+    assert pagina.index("posthog.init(") < pagina.index("</head>")
+    assert '<meta name="robots" content="noindex">' in pagina
+
+
+def test_starter_page_escapa_il_nome():
+    pagina = cs.costruisci_starter_page("<b>x</b>", "<script>posthog.init(</script>")
+    assert "<b>x</b>" not in pagina
+    assert "&lt;b&gt;x&lt;/b&gt;" in pagina

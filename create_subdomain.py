@@ -30,6 +30,8 @@ nella stessa cartella). Non salvare mai le API key nel codice o in git.
 """
 
 import argparse
+from pathlib import Path
+import html
 import os
 import re
 import sys
@@ -591,6 +593,103 @@ def force_https_redirect(subdomain, dry_run=False):
 
 
 # --------------------------------------------------------------------------- #
+# 5. Pagina iniziale con PostHog (UAPI Fileman) - LNDR-129
+#
+# Un sottodominio appena creato ha la document root vuota: non esiste un
+# template da cui "ereditare" lo snippet di analytics. Qui se ne scrive uno
+# minimo, gia' strumentato, cosi' il sottodominio viene tracciato dal primo
+# minuto. Il primo deploy vero (setup_autodeploy.py) lo sostituira' con
+# l'index.html del repository: per questo setup_autodeploy.py controlla
+# anche che quel repository contenga lo snippet.
+#
+# Lo snippet sta in assets/posthog-snippet.html ed e' l'unica copia
+# canonica: la chiave phc_ e' una chiave di sola ingestione, pubblica per
+# design (e' gia' nell'HTML di ogni pagina), quindi puo' stare nel repo.
+# --------------------------------------------------------------------------- #
+
+POSTHOG_SNIPPET_PATH = Path(__file__).resolve().parent / "assets" / "posthog-snippet.html"
+
+# I file che cPanel/Apache servirebbero come pagina iniziale. Se ce n'e'
+# gia' uno non si tocca niente: la pagina iniziale non deve mai sovrascrivere
+# contenuto vero.
+INDEX_CANDIDATI = ("index.html", "index.php")
+
+
+def carica_snippet_posthog(path=POSTHOG_SNIPPET_PATH):
+    """Legge lo snippet canonico. Fallisce subito se manca o e' incompleto."""
+    snippet = Path(path).read_text(encoding="utf-8")
+    for obbligatorio in ("posthog.init(", "cookieless_mode: 'always'", "person_profiles: 'never'"):
+        if obbligatorio not in snippet:
+            raise RuntimeError(f"{path} does not contain {obbligatorio!r}: refusing to ship an unsafe snippet.")
+    return snippet
+
+
+def costruisci_starter_page(fqdn, snippet):
+    """HTML della pagina iniziale. Funzione pura: testata senza rete."""
+    nome = html.escape(fqdn)
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '    <meta charset="utf-8">\n'
+        '    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        '    <meta name="robots" content="noindex">\n'
+        f"    <title>{nome}</title>\n"
+        f"{snippet.rstrip()}\n"
+        "</head>\n"
+        "<body>\n"
+        f"    <p>{nome} is being set up.</p>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+def write_starter_page(subdomain, dry_run=False):
+    require(
+        {"CPANEL_HOST": CPANEL_HOST, "CPANEL_USER": CPANEL_USER, "CPANEL_API_TOKEN": CPANEL_API_TOKEN},
+        ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
+    )
+    fqdn = f"{subdomain}.{ROOT_DOMAIN}"
+    contenuto = costruisci_starter_page(fqdn, carica_snippet_posthog())
+    # Come per force_https_redirect: il path e' quello appena impostato da
+    # create_subdomain, non un'assunzione su un sottodominio preesistente.
+    doc_root = subdomain
+    log("Starter page", f"Writing {doc_root}/index.html with the PostHog snippet")
+    if dry_run:
+        log("Starter page", f"[dry-run] Would write {doc_root}/index.html ({len(contenuto)} bytes) "
+                            "unless an index file already exists.")
+        return True
+
+    read_url = f"https://{CPANEL_HOST}:2083/execute/Fileman/get_file_content"
+    for nome in INDEX_CANDIDATI:
+        resp = requests.get(read_url, headers=cpanel_headers(), params={"dir": doc_root, "file": nome}, timeout=30)
+        data = resp.json() if resp.ok else {}
+        if data.get("status"):
+            log("Starter page", f"{doc_root}/{nome} already exists: left untouched.")
+            return True
+        if not file_inesistente(data):
+            # Non sapere se il file c'e' e' diverso da sapere che non c'e':
+            # nel dubbio non si scrive, per non sovrascrivere niente.
+            raise RuntimeError(
+                f"Could not check {doc_root}/{nome}: {data.get('errors') or resp.status_code}. "
+                "Not writing the starter page."
+            )
+
+    save_url = f"https://{CPANEL_HOST}:2083/execute/Fileman/save_file_content"
+    resp = requests.post(
+        save_url,
+        headers=cpanel_headers(),
+        data={"dir": doc_root, "file": "index.html", "content": contenuto},
+        timeout=30,
+    )
+    data = resp.json()
+    if not data.get("status"):
+        raise RuntimeError(f"Writing index.html failed: {data.get('errors')}")
+    log("Starter page", f"Starter page written: https://{fqdn}/ is tracked in PostHog from now on.")
+    return True
+
+
+# --------------------------------------------------------------------------- #
 # Orchestrazione
 # --------------------------------------------------------------------------- #
 
@@ -629,6 +728,11 @@ def main():
     parser.add_argument(
         "--skip-https-redirect", action="store_true",
         help="Skip writing the force-https block into .htaccess.",
+    )
+    parser.add_argument(
+        "--skip-starter-page", action="store_true",
+        help="Skip writing a placeholder index.html (with the PostHog snippet) "
+             "into the new document root.",
     )
     args = parser.parse_args()
 
@@ -688,6 +792,11 @@ def main():
         force_https_redirect(subdomain, dry_run=args.dry_run)
     else:
         log("HTTPS redirect", "Step skipped (--skip-https-redirect).")
+
+    if not args.skip_starter_page:
+        write_starter_page(subdomain, dry_run=args.dry_run)
+    else:
+        log("Starter page", "Step skipped (--skip-starter-page).")
 
     log("Done", f"Subdomain {subdomain}.{ROOT_DOMAIN} ready (or simulated, with --dry-run).")
 
