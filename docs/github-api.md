@@ -93,3 +93,31 @@ the one case a read can't catch: the doc's manual procedure names the file
 `deployTocPanel.yml`, this one writes `deploy-to-cpanel.yml`. different paths,
 so nothing is overwritten and *both* run — two deploys per push, racing over the
 same ftp directory. the preflight looks for the old name specifically and stops.
+
+## an empty repo is a different api
+
+a repo created on github and never pushed to answers differently depending on
+which endpoint you ask. checked against a real one:
+
+| call | answer |
+| --- | --- |
+| `GET /repos/{owner}/{repo}` | `200`, with a `default_branch` that doesn't exist yet |
+| `GET /repos/{owner}/{repo}/branches` | `200`, `[]` |
+| `GET /repos/{owner}/{repo}/branches/master` | `404` "Branch not found" |
+| `GET .../commits`, `.../git/refs`, `.../git/trees/...` | `409` "Git Repository is empty." |
+
+so a missing branch looks the same on an empty repo as on a typo — which is
+exactly how the first auto-deploy against a fresh repo failed.
+`setup_gitflow.py` takes either an empty branch list or a 409 to mean "empty".
+
+the git database api can't bootstrap it either: a ref needs a commit, and that
+api refuses to create one on an empty repo. the way in is the contents api —
+`PUT /contents/README.md` creates the first commit and its branch in one call.
+after that everything behaves normally, which is why `develop` is created with
+`POST /git/refs` right after (with a couple of retries, since github documents
+the same 409 for a repo that isn't "available" yet).
+
+the contents api's `branch` parameter is only documented as defaulting to the
+default branch; how it behaves on a repo with no branches at all isn't. so it's
+left out whenever the production branch *is* the default — the usual case — and
+when it isn't, the script checks the branch really got created.

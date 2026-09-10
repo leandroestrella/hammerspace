@@ -32,7 +32,7 @@ flowchart LR
     GHA --> CLI
     CLI -->|sottodominio, .htaccess, account ftp| UAPI[cpanel uapi]
     CLI -->|cancella sottodominio e file| API2[cpanel api2]
-    CLI -->|secrets, workflow di deploy| GH[api github]
+    CLI -->|branch, secrets, workflow di deploy| GH[api github]
     CLI -.->|autossl, opzionale| WHM[api whm]
     CLI -.->|record a, opzionale| NC[api namecheap]
     UAPI --> SRV[(il tuo server)]
@@ -49,8 +49,9 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 
 | strumento | cosa fa |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https e scrive una pagina iniziale con PostHog già integrato. opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
+| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https e scrive una pagina iniziale con PostHog già integrato (o senza, con `--skip-posthog`). opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | collega un repo github a quel sottodominio: crea l'account ftp, scrive i tre secret `FTP_*` sul repo di destinazione e ci committa un workflow di deploy, così ogni push pubblica. smonta anche tutto quanto. |
+| [`setup_gitflow.py`](./setup_gitflow.py) | prepara un repo github per il [gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow): un commit iniziale se è vuoto, e un branch `develop` accanto a `master`. `setup_autodeploy.py` lo lancia da solo su un repo vuoto. |
 
 ## caratteristiche
 
@@ -59,13 +60,14 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 - ✍️ **per le operazioni distruttive devi riscrivere il nome** — verificato prima ancora che venga installato qualcosa
 - 🔍 **`--dry-run` ovunque** — stampa tutte le chiamate che farebbe e non ne fa davvero nessuna, nemmeno in sola lettura
 - 🛫 **controlla prima di scrivere** — il run di auto-deploy verifica repo, branch, workflow e nome ftp all'inizio, così un errore a metà non lascia un account ftp orfano
+- 🌱 **anche i repo vuoti** — l'auto-deploy su un repo ancora senza commit gli dà prima un commit iniziale e i branch `master` + `develop` del gitflow, invece di fallire su un branch che non esiste
 - 🔒 **https forzato, ftp cifrato** — un blocco `mod_rewrite` aggiunto all'`.htaccess` del sottodominio, e deploy via ftps invece dell'ftp in chiaro della procedura originale
 - 🗝 **secret sigillati, mai stampati** — i secret del repo sono sealed box libsodium, e la password ftp generata resta fuori dai log se non la chiedi
 - 🗑 **file nel cestino per default** — recuperabili dal file manager di cpanel; `--purge` quando lo intendi davvero
 - 🛡 **i path si leggono, non si indovinano** — la document root arriva da cpanel stesso, e tutto ciò che sta fuori dalla home (o è `public_html`) viene rifiutato
 - 🚫 **non sovrascrive ciò che non ha scritto lui** — un `.htaccess` o un workflow di deploy già presenti fermano il run invece di essere rimpiazzati
 - 🌐 **il dns di solito non serve** — un record wildcard creato una volta sola fa risolvere ogni sottodominio nel momento in cui esiste
-- 📊 **tracciato dal primo minuto** — una pagina iniziale noindex con uno snippet PostHog senza cookie finisce nella document root, e `setup_autodeploy.py` avvisa se il repo che poi fa deploy non porta anche lui lo snippet
+- 📊 **tracciato dal primo minuto** — una pagina iniziale noindex con uno snippet PostHog senza cookie finisce nella document root (`--skip-posthog` per farne a meno), e `setup_autodeploy.py` avvisa se il repo che poi fa deploy non porta anche lui lo snippet
 - 💥 **fallisce presto e a voce alta** — una credenziale mancante si annuncia per nome, invece di trasformarsi in un errore api incomprensibile più avanti
 
 ## installazione
@@ -96,6 +98,8 @@ python3 create_subdomain.py lab --delete --with-files --purge  # + cartella canc
 python3 setup_autodeploy.py lab --repo tu/lab                  # push e pubblica
 python3 setup_autodeploy.py lab --repo tu/lab --branch web     # da un altro branch
 python3 setup_autodeploy.py lab --repo tu/lab --delete         # smonta tutto
+
+python3 setup_gitflow.py --repo tu/lab                         # master + develop
 ```
 
 tutti i flag, e cosa fa davvero ogni step, in [uso](docs/usage.md).
@@ -105,8 +109,9 @@ tutti i flag, e cosa fa davvero ogni step, in [uso](docs/usage.md).
 ```
 create_subdomain.py       lo strumento per i sottodomini
 setup_autodeploy.py       lo strumento per il deploy da git
+setup_gitflow.py          lo strumento per il gitflow
 test_*.py                 test sulle funzioni pure
-.github/workflows/        per ogni strumento, un workflow per creare e uno per cancellare
+.github/workflows/        un workflow per strumento, più uno separato per ogni cancellazione
 docs/                     setup, uso, note sull'api, risoluzione problemi
 assets/                   grafica, e lo snippet PostHog incluso in ogni pagina iniziale
 ```

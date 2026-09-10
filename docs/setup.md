@@ -18,7 +18,7 @@ what you need before the first run, in both places the scripts can run from.
 | `NAMECHEAP_API_KEY` | no | namecheap → profile → tools → api access |
 | `NAMECHEAP_USERNAME` | no | defaults to `NAMECHEAP_API_USER` |
 | `NAMECHEAP_CLIENT_IP` | no | must be whitelisted in namecheap → api access |
-| `GITHUB_PAT` | for auto-deploy | a personal access token that can write to the **target** repo — see below |
+| `GITHUB_PAT` | for auto-deploy and gitflow | a personal access token that can write to the **target** repo — see below |
 
 a missing variable fails immediately, naming exactly which ones are absent —
 nothing half-runs.
@@ -50,6 +50,11 @@ a token create or update anything under `.github/workflows/` without it, and
 says so in a 403 — which the script translates into a message naming the scope.
 if you'd rather not hand out that scope, `--skip-workflow-file` prints the
 workflow instead of committing it and the token only needs secrets access.
+
+`setup_gitflow.py` uses the same token and needs less: `Contents: write` (or a
+classic `repo`) for the initial commit and the branches, plus `Administration:
+write` only if you pass `--default-develop`. auto-deploy on an empty repo does
+the same initialization, which `Contents: write` already covers.
 
 this is a broad token. treat it like one: give it the shortest expiry you can
 live with, prefer fine-grained scoped to the repos you actually deploy, and
@@ -97,7 +102,7 @@ that's enough for creating and deleting subdomains. add the `WHM_*` secrets
 when you want autossl, and the `NAMECHEAP_*` ones only if you'll use
 `--with-dns-api`.
 
-for the auto-deploy workflows, add one more:
+for the auto-deploy and gitflow workflows, add one more:
 
 ```
 DEPLOY_GITHUB_PAT

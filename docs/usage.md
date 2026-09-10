@@ -1,12 +1,14 @@
 # usage
 
-two ways to run either script: from the **actions tab** on github (nothing
+two ways to run any of the scripts: from the **actions tab** on github (nothing
 to install), or from a **local terminal** (useful for debugging, and the only
 way to see a traceback in full).
 
 - [`create_subdomain.py`](#create-subdomain) — the subdomain itself
 - [`setup_autodeploy.py`](#setup-auto-deploy) — push-to-deploy from a git repo
   into that subdomain
+- [`setup_gitflow.py`](#setup-gitflow) — `master` + `develop` on a github repo,
+  with an initial commit if it's empty
 
 ## from github actions
 
@@ -22,6 +24,7 @@ way to see a traceback in full).
 | `skip_autossl` | **on** | leaves ssl alone; on by default because autossl needs a whm token nobody has set yet |
 | `skip_https_redirect` | off | skips writing the `.htaccess` redirect block |
 | `skip_starter_page` | off | skips writing a placeholder `index.html` that already carries the PostHog snippet; never overwrites an existing index |
+| `skip_posthog` | off | writes the starter page *without* the PostHog snippet, so the subdomain isn't tracked. with `skip_starter_page` on there's no page at all, so it changes nothing |
 
 ### delete subdomain
 
@@ -45,13 +48,32 @@ way to see a traceback in full).
 | `skip_secrets` | off | leave the repository secrets alone |
 | `skip_ftp` | off | leave the ftp account alone; with `skip_secrets` and `force`, this is the repair path |
 | `force` | off | overwrite a deploy workflow that's already there and different |
+| `skip_posthog_check` | off | skip the PostHog snippet scan below — for a site created with `skip_posthog` |
 
 after the workflow step, the tool scans the target repo's pages for `posthog.init` and warns if it's missing: the first deploy replaces the tracked starter page, so a repo without the snippet silently stops reporting. the canonical snippet is [`assets/posthog-snippet.html`](../assets/posthog-snippet.html).
+
+an **empty** target repo — created on github, never pushed to — is fine: the
+preflight spots it and the run initializes it with gitflow before writing
+anything else. see [an empty repo](#an-empty-repo).
 
 there's no `show_password` input on purpose: in actions it would print a live
 credential into the run log. the generated password goes straight into the
 target repo's `FTP_PASSWORD` secret, and if you need it for winscp you can
 reset it from cpanel → ftp accounts.
+
+### setup gitflow
+
+| input | default | what it does |
+| --- | --- | --- |
+| `repo` | — | the repo to prepare, as `owner/name` |
+| `branch` | `master` | the production branch. on an empty repo, the initial commit lands here |
+| `develop` | `develop` | the integration branch, created from `branch` if it isn't there |
+| `default_develop` | off | also make `develop` the repo's default branch, so clones and pull requests start from it. needs admin rights on the repo |
+| `dry_run` | off | prints what it would do, touches nothing |
+
+safe on any repo, any number of times: it only ever *adds* what's missing, and
+never moves a branch that already exists. see [what a gitflow setup actually
+does](#what-a-gitflow-setup-actually-does).
 
 ### teardown auto deploy
 
@@ -99,6 +121,7 @@ python3 create_subdomain.py lab --dry-run
 python3 create_subdomain.py lab --with-dns-api          # only if you need a dedicated record
 python3 create_subdomain.py lab --skip-https-redirect
 python3 create_subdomain.py lab --skip-starter-page     # no index.html, no PostHog snippet
+python3 create_subdomain.py lab --skip-posthog          # the index.html, without PostHog
 
 # subdomain: delete
 python3 create_subdomain.py lab --delete                       # subdomain only
@@ -117,6 +140,11 @@ python3 setup_autodeploy.py lab --repo you/lab --skip-ftp --skip-secrets --force
 
 # auto deploy: tear down
 python3 setup_autodeploy.py lab --repo you/lab --delete
+
+# gitflow
+python3 setup_gitflow.py --repo you/lab                     # master + develop, initial commit if empty
+python3 setup_gitflow.py --repo you/lab --branch main       # main + develop
+python3 setup_gitflow.py --repo you/lab --default-develop   # + develop as the default branch
 ```
 
 `--with-files` without `--delete`, or `--purge` without `--with-files`, is
@@ -140,6 +168,7 @@ the examples above cover the common paths; these are all of them.
 | `--skip-autossl` | off | skip the autossl trigger (the workflow passes it by default) |
 | `--skip-https-redirect` | off | skip writing the `.htaccess` redirect block |
 | `--skip-starter-page` | off | skip writing a placeholder `index.html` with the PostHog snippet; never overwrites an existing index anyway |
+| `--skip-posthog` | off | write the placeholder `index.html` without the PostHog snippet: the subdomain isn't tracked |
 
 #### `setup_autodeploy.py <project> --repo owner/name`
 
@@ -158,12 +187,23 @@ the examples above cover the common paths; these are all of them.
 | `--skip-ftp` | off | leave the ftp account alone and skip the "already exists" check — the repair path, see below |
 | `--skip-workflow-file` | off | print the workflow instead of committing it. useful when the token has no `workflow` scope |
 | `--force` | off | replace a deploy workflow that's already there and different |
+| `--skip-posthog-check` | off | don't scan the repo for the PostHog snippet — for sites created with `--skip-posthog` |
 | `--delete` | off | tear the whole thing down: workflow, secrets, ftp account. never touches the files |
 
 `--ftp-server` and `--dir` exist for the case where the account doesn't follow
 the conventions the rest of the repo assumes — a project whose document root
 isn't `~/<name>`, or a host reachable at something other than `SERVER_IP`.
 neither is needed for a subdomain that `create_subdomain.py` made.
+
+#### `setup_gitflow.py --repo owner/name`
+
+| flag | default | what it does |
+| --- | --- | --- |
+| `--repo` | **required** | the repo to prepare, as `owner/name` |
+| `--dry-run` | off | prints what it would do, touches nothing |
+| `--branch` | `master` | the production branch; on an empty repo the initial commit lands here |
+| `--develop` | `develop` | the integration branch to create from `--branch` |
+| `--default-develop` | off | also make `--develop` the repo's default branch. needs admin rights on the repo |
 
 ## what a subdomain creation actually does
 
@@ -176,7 +216,8 @@ neither is needed for a subdomain that `create_subdomain.py` made.
 5. **starter page** — writes a minimal, noindex `index.html` carrying the
    PostHog snippet to the document root, so the subdomain is tracked from its
    first minute. never overwrites an existing `index.html` or `index.php`; if
-   it can't tell whether one exists, it stops rather than guess
+   it can't tell whether one exists, it stops rather than guess.
+   `--skip-posthog` writes the same page without the snippet
 
 each step prints what it's doing with a `[step]` prefix, so a failed run tells
 you exactly how far it got.
@@ -184,7 +225,8 @@ you exactly how far it got.
 ## what an auto-deploy setup actually does
 
 0. **preflight** — everything that can be checked without changing anything:
-   the target repo is reachable, the branch exists, no deploy workflow is
+   the target repo is reachable, the branch exists (or the repo is empty,
+   see [below](#an-empty-repo)), no deploy workflow is
    already sitting there, no ftp account by that name exists. all of it happens
    *before* the first write, because a half-finished run leaves an orphan ftp
    account on the server that you then have to find and remove by hand
@@ -203,6 +245,28 @@ real deploy runs. the ftp account and the secrets have to exist by then.
 that also means `setup_autodeploy.py` is not a quiet operation at the end: it
 finishes by publishing your repo. `--dry-run` first if you're not sure, or
 `--skip-workflow-file` to stop one step short and commit the file yourself.
+
+### an empty repo
+
+a repo created on github and never pushed to has no branches at all, so there's
+nothing to commit the workflow to and nothing to deploy. rather than failing
+with "branch not found", the preflight tells that case apart from a mistyped
+branch, and the run initializes the repo first — exactly what
+[`setup_gitflow.py`](#what-a-gitflow-setup-actually-does) does: an initial
+commit with a `README.md` on the deploy branch, then `develop` from it.
+
+that's the run's first write, before the ftp account exists: if it fails,
+nothing is left behind on the server, and if a later step fails the next run
+finds an ordinary repo. once the workflow is committed, `develop` is
+fast-forwarded to match, so it doesn't start out one commit behind.
+
+two things worth knowing:
+
+- the `README.md` is a real file in the repo, so the first deploy publishes it
+  to the document root along with everything else. the starter page stays until
+  the repo brings its own `index.html`
+- deploying an empty repo *from* `develop` stops at the preflight: there'd be no
+  production branch to start it from. run **setup gitflow** first, then this
 
 ### repairing an existing setup
 
@@ -240,6 +304,29 @@ if a repo was set up by hand from the doc, it already has a
 `deployTocPanel.yml`. the script checks for that name and **refuses to run**
 rather than adding a second workflow — two of them means two deploys per push,
 racing each other over the same ftp directory.
+
+## what a gitflow setup actually does
+
+[gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow)
+keeps two long-lived branches instead of one: `master` only ever receives
+releases, `develop` is where features come together.
+
+1. **initial commit** — only if the repo has no commits: a `README.md`
+   describing the two branches, on the production branch. github's git api
+   (refs, trees, commits) answers 409 on an empty repo, so this goes through
+   the contents api, the one way in — see [github api
+   notes](github-api.md#an-empty-repo-is-a-different-api)
+2. **`develop`** — created from the production branch, unless it's already
+   there. an existing `develop` is never moved
+3. **default branch** — only with `--default-develop`
+
+what it can't do is the local half: the `feature/`, `release/` and `hotfix/`
+prefixes of the `git flow` command live in each clone's `.git/config`, not on
+github. after cloning, `git flow init -d` finds both branches and fills in the
+defaults.
+
+a repo that has commits but no production branch by that name stops the run
+rather than guessing — pass `--branch` with the right one.
 
 ## dry runs
 

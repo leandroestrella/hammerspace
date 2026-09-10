@@ -41,6 +41,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_posthog_check:
+        description: "Don't check the repository for the PostHog snippet (for sites created without PostHog)"
+        required: false
+        type: boolean
+        default: false
 
 # Il job non usa il GITHUB_TOKEN: scrive sul repository di destinazione con
 # GITHUB_PAT, e su questo repository non gli serve nessuno scope.
@@ -81,6 +86,7 @@ jobs:
           SKIP_SECRETS: ${{ inputs.skip_secrets }}
           SKIP_FTP: ${{ inputs.skip_ftp }}
           FORCE: ${{ inputs.force }}
+          SKIP_POSTHOG_CHECK: ${{ inputs.skip_posthog_check }}
         run: |
           ARGS=("$PROJECT" --repo "$REPO" --branch "$BRANCH")
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
@@ -88,6 +94,7 @@ jobs:
           [ "$SKIP_SECRETS" = "true" ] && ARGS+=(--skip-secrets)
           [ "$SKIP_FTP" = "true" ] && ARGS+=(--skip-ftp)
           [ "$FORCE" = "true" ] && ARGS+=(--force)
+          [ "$SKIP_POSTHOG_CHECK" = "true" ] && ARGS+=(--skip-posthog-check)
           # Niente --show-password: qui finirebbe nel log del run. La password
           # generata è già dentro il secret FTP_PASSWORD del repository di
           # destinazione; per WinSCP resettala da cPanel → FTP Accounts.

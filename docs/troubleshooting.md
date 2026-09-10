@@ -145,6 +145,38 @@ that repo was set up by hand from the confluence doc. adding a second workflow
 wouldn't replace the first — both would fire on every push and overwrite each
 other over ftp. delete the old file, then re-run.
 
+## auto deploy: "branch 'master' does not exist on ..."
+
+the repo has commits, just not on that branch — its deploy branch is probably
+`main`. pass `--branch` (or the `branch` input) with the right name.
+
+a repo with **no commits at all** doesn't end up here any more: it gets
+initialized instead, see [an empty repo](usage.md#an-empty-repo).
+
+## auto deploy: "could not fast-forward develop"
+
+after initializing an empty repo, the run brings `develop` up to the commit that
+added the deploy workflow. if that fails it's only a warning — the deploy is set
+up either way — and `develop` is simply one commit behind. merge the production
+branch into it:
+
+```bash
+git switch develop
+git merge master
+git push
+```
+
+## setup gitflow: 403 when changing the default branch
+
+`--default-develop` changes a repository setting, which takes admin rights on
+the repo — a fine-grained pat needs `Administration: write`. the branches exist
+by then; fix the token and re-run, and only the missing step happens.
+
+## setup gitflow: "the repository already has commits but no 'master' branch"
+
+the repo's production branch has another name — usually `main`. pass it with
+`--branch main`, or the `branch` input.
+
 ## auto deploy: the site deployed to the wrong folder
 
 the ftp account's home is where `server-dir: ./` resolves to. if the account was
@@ -176,6 +208,7 @@ deploy happens.
 ```bash
 gh run list --workflow=create-subdomain.yml --limit 5
 gh run list --workflow=setup-autodeploy.yml --limit 5
+gh run list --workflow=setup-gitflow.yml --limit 5
 gh run view <run-id> --log
 ```
 

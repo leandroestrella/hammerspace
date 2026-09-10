@@ -1,0 +1,63 @@
+name: Setup gitflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Repository, as 'owner/name'"
+        required: true
+        type: string
+      branch:
+        description: "Production branch; on an empty repository the initial commit goes here"
+        required: false
+        type: string
+        default: master
+      develop:
+        description: "Integration branch to create from the production branch"
+        required: false
+        type: string
+        default: develop
+      default_develop:
+        description: "Also make the develop branch the repository default (needs admin rights)"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Print every call it would make, and make none"
+        required: false
+        type: boolean
+        default: false
+
+# Il job non usa il GITHUB_TOKEN: scrive sul repository di destinazione con
+# GITHUB_PAT, e su questo repository non gli serve nessuno scope.
+permissions: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Set up gitflow
+        env:
+          # Lo stesso PAT dell'auto deploy: basta 'Contents: write' sul
+          # repository di destinazione, piu' i diritti admin per default_develop.
+          GITHUB_PAT: ${{ secrets.DEPLOY_GITHUB_PAT }}
+          # Gli input passano dall'ambiente, NON interpolati dentro lo script:
+          # vedi il commento in setup-autodeploy.yml.
+          REPO: ${{ inputs.repo }}
+          BRANCH: ${{ inputs.branch }}
+          DEVELOP: ${{ inputs.develop }}
+          DEFAULT_DEVELOP: ${{ inputs.default_develop }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=(--repo "$REPO" --branch "$BRANCH" --develop "$DEVELOP")
+          [ "$DEFAULT_DEVELOP" = "true" ] && ARGS+=(--default-develop)
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          python setup_gitflow.py "${ARGS[@]}"

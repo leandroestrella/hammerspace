@@ -27,6 +27,11 @@ branch scelto, e il commit che lo aggiunge E' un push su quel branch: appena il
 file arriva parte un deploy vero. Per questo l'account FTP e i secret devono
 gia' esistere quando succede.
 
+Un repository appena creato, senza nessun commit, non ha un branch su cui
+scrivere il workflow ne' da cui fare deploy: il preflight lo riconosce e, prima
+di ogni altra scrittura, lo inizializza col Gitflow tramite setup_gitflow.py
+(commit iniziale sul branch scelto, piu' develop).
+
 Le credenziali si passano tramite variabili d'ambiente (vedi .env.example
 nella stessa cartella). Non salvare mai le API key nel codice o in git.
 """
@@ -40,6 +45,8 @@ import string
 import sys
 
 import requests
+
+import setup_gitflow as gitflow
 
 # --------------------------------------------------------------------------- #
 # Configurazione da variabili d'ambiente
@@ -683,9 +690,14 @@ def controlla_snippet_posthog(owner, repo, branch, dry_run=False):
 
 def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
               skip_ftp=False, force=False, dry_run=False):
+    """Controlli senza scritture. Restituisce True se il repository e' vuoto."""
     if dry_run:
-        log("Preflight", "[dry-run] Skipping the preliminary checks (they are network calls).")
-        return
+        log(
+            "Preflight",
+            "[dry-run] Skipping the preliminary checks (they are network calls), "
+            "including the one that spots an empty repository to initialize.",
+        )
+        return False
 
     log("Preflight", f"Checking access to {owner}/{repo}")
     require({"GITHUB_PAT": GITHUB_PAT}, ["GITHUB_PAT"])
@@ -698,14 +710,32 @@ def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
         f"Reading branch {branch}",
         ok_404=True,
     )
+    vuoto = False
     if rami is None:
-        raise RuntimeError(
-            f"Branch {branch!r} does not exist on {owner}/{repo} "
-            f"(the default branch is {info.get('default_branch')!r}). "
-            "Pass --branch with the right one."
+        # L'eccezione: un repository appena creato non ha nessun branch, e
+        # non per un errore di battitura. main() lo inizializza prima di
+        # scrivere qualsiasi altra cosa.
+        vuoto = gitflow.repo_vuoto(owner, repo)
+        if not vuoto:
+            raise RuntimeError(
+                f"Branch {branch!r} does not exist on {owner}/{repo} "
+                f"(the default branch is {info.get('default_branch')!r}). "
+                "Pass --branch with the right one."
+            )
+        if branch == gitflow.DEVELOP:
+            raise RuntimeError(
+                f"{owner}/{repo} is empty, and deploying from {branch!r} needs a "
+                "production branch to start it from. Initialize the repository first "
+                "with setup_gitflow.py (the 'Setup gitflow' action), then re-run."
+            )
+        log(
+            "Preflight",
+            f"{owner}/{repo} has no commits yet: it will be initialized with Gitflow "
+            f"({branch} + {gitflow.DEVELOP}) before anything else is written.",
         )
 
-    if not skip_workflow:
+    # Su un repository vuoto non c'e' nessun workflow da trovare.
+    if not skip_workflow and not vuoto:
         controlla_workflow_legacy(owner, repo, branch, force=force)
 
     if not skip_ftp and account_ftp_esiste(ftp_user, dominio):
@@ -717,6 +747,7 @@ def preflight(owner, repo, branch, ftp_user, dominio, skip_workflow,
             "already set up: --skip-ftp --skip-secrets --force."
         )
     log("Preflight", "Checks passed.")
+    return vuoto
 
 
 # --------------------------------------------------------------------------- #
@@ -792,6 +823,12 @@ def main():
         help="Overwrite the deploy workflow if a different one is already there.",
     )
     parser.add_argument(
+        "--skip-posthog-check",
+        action="store_true",
+        help="Don't scan the repository for the PostHog snippet. For sites created "
+             "with create_subdomain.py --skip-posthog.",
+    )
+    parser.add_argument(
         "--delete",
         action="store_true",
         help="Tear the auto deploy down: removes the workflow, the secrets and the "
@@ -845,11 +882,18 @@ def main():
         log("Done", f"Auto deploy for {owner}/{repo} torn down (or simulated, with --dry-run).")
         return
 
-    preflight(
+    vuoto = preflight(
         owner, repo, args.branch, ftp_user, dominio,
         skip_workflow=args.skip_workflow_file, skip_ftp=args.skip_ftp,
         force=args.force, dry_run=args.dry_run,
     )
+
+    # La prima scrittura del run, prima ancora dell'account FTP: se fallisce,
+    # sul server non resta niente di orfano; se riesce, il repository e' in uno
+    # stato valido anche quando uno step successivo si ferma, e il run dopo lo
+    # trova gia' inizializzato.
+    if vuoto:
+        gitflow.configura_gitflow(owner, repo, branch=args.branch)
 
     password = args.ftp_password or genera_password()
     ftp_server = args.ftp_server or SERVER_IP
@@ -882,8 +926,30 @@ def main():
             owner, repo, args.branch, workflow,
             force=args.force, dry_run=args.dry_run,
         )
+        if vuoto:
+            # develop e' nato dal commit iniziale, uno prima del workflow: senza
+            # questo partirebbe gia' "1 commit behind" il branch di produzione.
+            # Non e' un motivo per fallire: il deploy e' gia' configurato.
+            try:
+                gitflow.allinea_develop(owner, repo, args.branch)
+            except RuntimeError as e:
+                log(
+                    "Gitflow",
+                    f"WARNING: could not fast-forward {gitflow.DEVELOP} ({e}). "
+                    f"Merge {args.branch} into {gitflow.DEVELOP} by hand.",
+                )
 
-    controlla_snippet_posthog(owner, repo, args.branch, dry_run=args.dry_run)
+    if args.skip_posthog_check:
+        log("PostHog", "Step skipped (--skip-posthog-check).")
+    elif vuoto:
+        log(
+            "PostHog",
+            "The repository was just initialized, so it has no pages to check yet. "
+            "When the site's HTML lands, paste assets/posthog-snippet.html from "
+            "hammerspace into its <head> to keep the subdomain tracked.",
+        )
+    else:
+        controlla_snippet_posthog(owner, repo, args.branch, dry_run=args.dry_run)
 
     if args.skip_ftp:
         pass  # nessuna password generata: non c'e' niente da dire
