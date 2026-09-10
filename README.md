@@ -47,7 +47,7 @@ notes](docs/github-api.md).
 
 | tool | what it does |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | creates a subdomain on cpanel, points its document root at `~/<name>`, and forces an https redirect. optionally triggers autossl and a dedicated dns record. deletes it again too, with or without its files. |
+| [`create_subdomain.py`](./create_subdomain.py) | creates a subdomain on cpanel, points its document root at `~/<name>`, forces an https redirect, and drops a PostHog-instrumented starter page. optionally triggers autossl and a dedicated dns record. deletes it again too, with or without its files. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | wires a github repo to that subdomain: creates the ftp account, writes the three `FTP_*` secrets on the target repo, and commits a deploy workflow so every push publishes. tears the whole thing down too. |
 
 ## features
@@ -63,6 +63,7 @@ notes](docs/github-api.md).
 - 🛡 **paths read, never guessed** — the document root comes from cpanel itself, and anything outside the home directory (or `public_html`) is refused
 - 🚫 **won't clobber what it didn't write** — an existing `.htaccess` or deploy workflow stops the run instead of being replaced
 - 🌐 **dns usually unnecessary** — a one-time wildcard record means every subdomain resolves the moment it exists
+- 📊 **tracked from minute one** — a noindex starter page carrying a cookieless PostHog snippet lands in the document root, and `setup_autodeploy.py` warns if the repo it deploys later doesn't carry the snippet too
 - 💥 **fails loudly and early** — a missing credential names itself instead of turning into a confusing api error later
 
 ## setup
@@ -105,7 +106,7 @@ setup_autodeploy.py       the push-to-deploy tool
 test_*.py                 tests for the pure functions
 .github/workflows/        a create and a delete workflow per tool
 docs/                     setup, usage, api notes, troubleshooting
-assets/                   art
+assets/                   art, and the PostHog snippet baked into every starter page
 ```
 
 ## docs

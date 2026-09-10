@@ -49,7 +49,7 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 
 | strumento | cosa fa |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>` e forza il redirect https. opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
+| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https e scrive una pagina iniziale con PostHog già integrato. opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | collega un repo github a quel sottodominio: crea l'account ftp, scrive i tre secret `FTP_*` sul repo di destinazione e ci committa un workflow di deploy, così ogni push pubblica. smonta anche tutto quanto. |
 
 ## caratteristiche
@@ -65,6 +65,7 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 - 🛡 **i path si leggono, non si indovinano** — la document root arriva da cpanel stesso, e tutto ciò che sta fuori dalla home (o è `public_html`) viene rifiutato
 - 🚫 **non sovrascrive ciò che non ha scritto lui** — un `.htaccess` o un workflow di deploy già presenti fermano il run invece di essere rimpiazzati
 - 🌐 **il dns di solito non serve** — un record wildcard creato una volta sola fa risolvere ogni sottodominio nel momento in cui esiste
+- 📊 **tracciato dal primo minuto** — una pagina iniziale noindex con uno snippet PostHog senza cookie finisce nella document root, e `setup_autodeploy.py` avvisa se il repo che poi fa deploy non porta anche lui lo snippet
 - 💥 **fallisce presto e a voce alta** — una credenziale mancante si annuncia per nome, invece di trasformarsi in un errore api incomprensibile più avanti
 
 ## installazione
@@ -107,7 +108,7 @@ setup_autodeploy.py       lo strumento per il deploy da git
 test_*.py                 test sulle funzioni pure
 .github/workflows/        per ogni strumento, un workflow per creare e uno per cancellare
 docs/                     setup, uso, note sull'api, risoluzione problemi
-assets/                   grafica
+assets/                   grafica, e lo snippet PostHog incluso in ogni pagina iniziale
 ```
 
 ## documentazione

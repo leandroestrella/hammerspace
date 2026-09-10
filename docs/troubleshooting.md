@@ -84,6 +84,21 @@ saving replaces the file wholesale, and an unreadable file is not the same as
 an empty one. check the document root exists and the token can read it, then
 re-run.
 
+## "could not check index.html/index.php ... not writing the starter page"
+
+same caution as the `.htaccess` step: not knowing whether an index file exists
+is different from knowing it doesn't, so the run stops rather than risk
+overwriting a real site. check the document root is readable, then re-run —
+`--skip-starter-page` if you'd rather skip it entirely.
+
+## setup_autodeploy warns "no posthog.init found in the repository's pages"
+
+the target repo's html doesn't carry the snippet the starter page shipped
+with, so the first deploy will replace it and the subdomain stops reporting to
+PostHog. it's a warning, not a failure — the deploy still goes through. paste
+[`assets/posthog-snippet.html`](../assets/posthog-snippet.html) into the
+repo's `<head>` before (or after) the deploy to keep tracking it.
+
 ## namecheap
 
 `--with-dns-api` is untested against a live api and the account doesn't meet

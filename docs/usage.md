@@ -98,6 +98,7 @@ python3 create_subdomain.py lab
 python3 create_subdomain.py lab --dry-run
 python3 create_subdomain.py lab --with-dns-api          # only if you need a dedicated record
 python3 create_subdomain.py lab --skip-https-redirect
+python3 create_subdomain.py lab --skip-starter-page     # no index.html, no PostHog snippet
 
 # subdomain: delete
 python3 create_subdomain.py lab --delete                       # subdomain only
@@ -138,6 +139,7 @@ the examples above cover the common paths; these are all of them.
 | `--with-dns-api` | off | create a dedicated namecheap a record — usually unnecessary, see [dns](#dns) |
 | `--skip-autossl` | off | skip the autossl trigger (the workflow passes it by default) |
 | `--skip-https-redirect` | off | skip writing the `.htaccess` redirect block |
+| `--skip-starter-page` | off | skip writing a placeholder `index.html` with the PostHog snippet; never overwrites an existing index anyway |
 
 #### `setup_autodeploy.py <project> --repo owner/name`
 
@@ -171,6 +173,10 @@ neither is needed for a subdomain that `create_subdomain.py` made.
 3. **autossl** — skipped by default, see [ssl](#ssl)
 4. **https redirect** — appends a `mod_rewrite` block to
    `~/<subdomain>/.htaccess`, creating the file if it isn't there
+5. **starter page** — writes a minimal, noindex `index.html` carrying the
+   PostHog snippet to the document root, so the subdomain is tracked from its
+   first minute. never overwrites an existing `index.html` or `index.php`; if
+   it can't tell whether one exists, it stops rather than guess
 
 each step prints what it's doing with a `[step]` prefix, so a failed run tells
 you exactly how far it got.

@@ -51,7 +51,7 @@ github](docs/github-api.md).
 
 | herramienta | qué hace |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | crea un subdominio en cpanel, apunta su document root a `~/<nombre>` y fuerza la redirección https. opcionalmente lanza autossl y crea un registro dns dedicado. también lo borra, con o sin sus archivos. |
+| [`create_subdomain.py`](./create_subdomain.py) | crea un subdominio en cpanel, apunta su document root a `~/<nombre>`, fuerza la redirección https y deja una página inicial con PostHog integrado. opcionalmente lanza autossl y crea un registro dns dedicado. también lo borra, con o sin sus archivos. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | conecta un repo de github con ese subdominio: crea la cuenta ftp, escribe los tres secrets `FTP_*` en el repo de destino y le hace commit de un workflow de despliegue, para que cada push publique. también lo desmonta todo. |
 
 ## características
@@ -67,6 +67,7 @@ github](docs/github-api.md).
 - 🛡 **las rutas se leen, no se adivinan** — la document root viene de cpanel mismo, y se rechaza cualquier ruta fuera del home (o que sea `public_html`)
 - 🚫 **no pisa lo que no escribió él** — un `.htaccess` o un workflow de despliegue ya presentes detienen la ejecución en vez de ser reemplazados
 - 🌐 **el dns no suele hacer falta** — un registro comodín creado una sola vez hace que cada subdominio resuelva en cuanto existe
+- 📊 **con seguimiento desde el minuto uno** — una página inicial sin index en buscadores, con un snippet de PostHog sin cookies, llega al document root; `setup_autodeploy.py` avisa si el repo que despliega después no lleva también el snippet
 - 💥 **falla pronto y en voz alta** — una credencial que falta se anuncia por su nombre, en vez de convertirse más tarde en un error de api incomprensible
 
 ## instalación
@@ -109,7 +110,7 @@ setup_autodeploy.py       la herramienta de despliegue desde git
 test_*.py                 tests de las funciones puras
 .github/workflows/        por herramienta, un workflow para crear y otro para borrar
 docs/                     setup, uso, notas de api, resolución de problemas
-assets/                   gráficos
+assets/                   gráficos, y el snippet de PostHog que lleva cada página inicial
 ```
 
 ## documentación
