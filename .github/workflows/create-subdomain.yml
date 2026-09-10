@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_posthog:
+        description: "Write the starter page without the PostHog snippet (the subdomain is not tracked)"
+        required: false
+        type: boolean
+        default: false
 
 # Il job non usa il GITHUB_TOKEN: non gli serve nessuno scope.
 permissions: {}
@@ -74,6 +79,7 @@ jobs:
           SKIP_AUTOSSL: ${{ inputs.skip_autossl }}
           SKIP_HTTPS_REDIRECT: ${{ inputs.skip_https_redirect }}
           SKIP_STARTER_PAGE: ${{ inputs.skip_starter_page }}
+          SKIP_POSTHOG: ${{ inputs.skip_posthog }}
         run: |
           ARGS=("$SUBDOMAIN")
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
@@ -81,4 +87,5 @@ jobs:
           [ "$SKIP_AUTOSSL" = "true" ] && ARGS+=(--skip-autossl)
           [ "$SKIP_HTTPS_REDIRECT" = "true" ] && ARGS+=(--skip-https-redirect)
           [ "$SKIP_STARTER_PAGE" = "true" ] && ARGS+=(--skip-starter-page)
+          [ "$SKIP_POSTHOG" = "true" ] && ARGS+=(--skip-posthog)
           python create_subdomain.py "${ARGS[@]}"

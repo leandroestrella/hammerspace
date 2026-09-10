@@ -19,6 +19,7 @@ Uso:
     python3 create_subdomain.py lab --dry-run
     python3 create_subdomain.py lab --skip-autossl --skip-https-redirect
     python3 create_subdomain.py lab --with-dns-api   # solo se serve un record dedicato
+    python3 create_subdomain.py lab --skip-posthog   # pagina iniziale senza PostHog
 
 Rimozione:
     python3 create_subdomain.py lab --delete                        # solo il sottodominio
@@ -624,9 +625,13 @@ def carica_snippet_posthog(path=POSTHOG_SNIPPET_PATH):
     return snippet
 
 
-def costruisci_starter_page(fqdn, snippet):
-    """HTML della pagina iniziale. Funzione pura: testata senza rete."""
+def costruisci_starter_page(fqdn, snippet=None):
+    """HTML della pagina iniziale. Funzione pura: testata senza rete.
+
+    Senza snippet (--skip-posthog) la pagina resta la stessa, solo non tracciata.
+    """
     nome = html.escape(fqdn)
+    righe_snippet = f"{snippet.rstrip()}\n" if snippet else ""
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n'
@@ -635,7 +640,7 @@ def costruisci_starter_page(fqdn, snippet):
         '    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
         '    <meta name="robots" content="noindex">\n'
         f"    <title>{nome}</title>\n"
-        f"{snippet.rstrip()}\n"
+        f"{righe_snippet}"
         "</head>\n"
         "<body>\n"
         f"    <p>{nome} is being set up.</p>\n"
@@ -644,17 +649,20 @@ def costruisci_starter_page(fqdn, snippet):
     )
 
 
-def write_starter_page(subdomain, dry_run=False):
+def write_starter_page(subdomain, posthog=True, dry_run=False):
     require(
         {"CPANEL_HOST": CPANEL_HOST, "CPANEL_USER": CPANEL_USER, "CPANEL_API_TOKEN": CPANEL_API_TOKEN},
         ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
     )
     fqdn = f"{subdomain}.{ROOT_DOMAIN}"
-    contenuto = costruisci_starter_page(fqdn, carica_snippet_posthog())
+    contenuto = costruisci_starter_page(fqdn, carica_snippet_posthog() if posthog else None)
     # Come per force_https_redirect: il path e' quello appena impostato da
     # create_subdomain, non un'assunzione su un sottodominio preesistente.
     doc_root = subdomain
-    log("Starter page", f"Writing {doc_root}/index.html with the PostHog snippet")
+    if posthog:
+        log("Starter page", f"Writing {doc_root}/index.html with the PostHog snippet")
+    else:
+        log("Starter page", f"Writing {doc_root}/index.html without PostHog (--skip-posthog)")
     if dry_run:
         log("Starter page", f"[dry-run] Would write {doc_root}/index.html ({len(contenuto)} bytes) "
                             "unless an index file already exists.")
@@ -685,7 +693,10 @@ def write_starter_page(subdomain, dry_run=False):
     data = resp.json()
     if not data.get("status"):
         raise RuntimeError(f"Writing index.html failed: {data.get('errors')}")
-    log("Starter page", f"Starter page written: https://{fqdn}/ is tracked in PostHog from now on.")
+    if posthog:
+        log("Starter page", f"Starter page written: https://{fqdn}/ is tracked in PostHog from now on.")
+    else:
+        log("Starter page", f"Starter page written: https://{fqdn}/ (not tracked).")
     return True
 
 
@@ -733,6 +744,11 @@ def main():
         "--skip-starter-page", action="store_true",
         help="Skip writing a placeholder index.html (with the PostHog snippet) "
              "into the new document root.",
+    )
+    parser.add_argument(
+        "--skip-posthog", action="store_true",
+        help="Write the starter page without the PostHog snippet: the subdomain "
+             "is not tracked.",
     )
     args = parser.parse_args()
 
@@ -794,7 +810,7 @@ def main():
         log("HTTPS redirect", "Step skipped (--skip-https-redirect).")
 
     if not args.skip_starter_page:
-        write_starter_page(subdomain, dry_run=args.dry_run)
+        write_starter_page(subdomain, posthog=not args.skip_posthog, dry_run=args.dry_run)
     else:
         log("Starter page", "Step skipped (--skip-starter-page).")
 

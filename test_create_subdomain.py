@@ -242,6 +242,15 @@ def test_starter_page_contiene_snippet_e_titolo():
     assert '<meta name="robots" content="noindex">' in pagina
 
 
+def test_starter_page_senza_posthog():
+    # --skip-posthog: stessa pagina, nessuna traccia dello snippet.
+    pagina = cs.costruisci_starter_page("lab.example.com")
+    assert "posthog" not in pagina.lower()
+    assert "<title>lab.example.com</title>" in pagina
+    assert '<meta name="robots" content="noindex">' in pagina
+    assert "</head>" in pagina
+
+
 def test_starter_page_escapa_il_nome():
     pagina = cs.costruisci_starter_page("<b>x</b>", "<script>posthog.init(</script>")
     assert "<b>x</b>" not in pagina
