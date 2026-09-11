@@ -227,6 +227,23 @@ def test_snippet_non_identifica_mai():
     assert "posthog.alias(" not in s
 
 
+def test_snippet_tagga_il_progetto():
+    # Tutti i siti condividono un progetto PostHog: il tag li separa nei report.
+    s = cs.carica_snippet_posthog(project="lab")
+    assert "posthog.register({ project: 'lab' })" in s
+    assert cs.POSTHOG_PROJECT_PLACEHOLDER not in s
+
+
+def test_snippet_senza_progetto_lascia_il_segnaposto():
+    s = cs.carica_snippet_posthog()
+    assert f"posthog.register({{ project: '{cs.POSTHOG_PROJECT_PLACEHOLDER}' }})" in s
+
+
+def test_snippet_progetto_non_valido_rifiutato():
+    with pytest.raises(ValueError):
+        cs.carica_snippet_posthog(project="x' }); alert(1); ({ y: '")
+
+
 def test_snippet_incompleto_rifiutato(tmp_path):
     finto = tmp_path / "snippet.html"
     finto.write_text("<script>posthog.init('phc_x', {})</script>")

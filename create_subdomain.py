@@ -616,12 +616,25 @@ POSTHOG_SNIPPET_PATH = Path(__file__).resolve().parent / "assets" / "posthog-sni
 INDEX_CANDIDATI = ("index.html", "index.php")
 
 
-def carica_snippet_posthog(path=POSTHOG_SNIPPET_PATH):
-    """Legge lo snippet canonico. Fallisce subito se manca o e' incompleto."""
+# Tutti i siti mandano allo stesso progetto PostHog: il tag `project` e'
+# l'unico modo per separarli nei report. Nello snippet c'e' un segnaposto
+# che viene sostituito con il nome del sottodominio.
+POSTHOG_PROJECT_PLACEHOLDER = "__PROJECT__"
+
+
+def carica_snippet_posthog(path=POSTHOG_SNIPPET_PATH, project=None):
+    """Legge lo snippet canonico. Fallisce subito se manca o e' incompleto.
+
+    Con `project` il segnaposto del tag viene sostituito con quel nome.
+    """
     snippet = Path(path).read_text(encoding="utf-8")
     for obbligatorio in ("posthog.init(", "cookieless_mode: 'always'", "person_profiles: 'never'"):
         if obbligatorio not in snippet:
             raise RuntimeError(f"{path} does not contain {obbligatorio!r}: refusing to ship an unsafe snippet.")
+    if project is not None:
+        if not re.fullmatch(r"[a-z0-9-]+", project):
+            raise ValueError(f"{project!r} is not a valid PostHog project tag.")
+        snippet = snippet.replace(POSTHOG_PROJECT_PLACEHOLDER, project)
     return snippet
 
 
@@ -655,7 +668,7 @@ def write_starter_page(subdomain, posthog=True, dry_run=False):
         ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN"],
     )
     fqdn = f"{subdomain}.{ROOT_DOMAIN}"
-    contenuto = costruisci_starter_page(fqdn, carica_snippet_posthog() if posthog else None)
+    contenuto = costruisci_starter_page(fqdn, carica_snippet_posthog(project=subdomain) if posthog else None)
     # Come per force_https_redirect: il path e' quello appena impostato da
     # create_subdomain, non un'assunzione su un sottodominio preesistente.
     doc_root = subdomain
