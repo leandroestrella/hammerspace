@@ -33,6 +33,7 @@ flowchart LR
     CLI -->|branches, secrets, deploy workflow| GH[github api]
     CLI -.->|autossl, optional| WHM[whm api]
     CLI -.->|a record, optional| NC[namecheap api]
+    CLI -.->|authorized urls, optional| PH[posthog api]
     UAPI --> SRV[(your server)]
     API2 --> SRV
     GH -->|push| SRV
@@ -47,7 +48,7 @@ notes](docs/github-api.md).
 
 | tool | what it does |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | creates a subdomain on cpanel, points its document root at `~/<name>`, forces an https redirect, and drops a PostHog-instrumented starter page (or a plain one, with `--skip-posthog`). optionally triggers autossl and a dedicated dns record. deletes it again too, with or without its files. |
+| [`create_subdomain.py`](./create_subdomain.py) | creates a subdomain on cpanel, points its document root at `~/<name>`, forces an https redirect, drops a PostHog-instrumented starter page (or a plain one, with `--skip-posthog`), and adds the subdomain to PostHog's authorized urls so web analytics shows it. optionally triggers autossl and a dedicated dns record. deletes it again too, with or without its files. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | wires a github repo to that subdomain: creates the ftp account, writes the three `FTP_*` secrets on the target repo, and commits a deploy workflow so every push publishes. tears the whole thing down too. |
 | [`setup_gitflow.py`](./setup_gitflow.py) | readies a github repo for [gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow): an initial commit if it's empty, and a `develop` branch next to `master`. `setup_autodeploy.py` runs it by itself on an empty repo. |
 
@@ -65,7 +66,7 @@ notes](docs/github-api.md).
 - 🛡 **paths read, never guessed** — the document root comes from cpanel itself, and anything outside the home directory (or `public_html`) is refused
 - 🚫 **won't clobber what it didn't write** — an existing `.htaccess` or deploy workflow stops the run instead of being replaced
 - 🌐 **dns usually unnecessary** — a one-time wildcard record means every subdomain resolves the moment it exists
-- 📊 **tracked from minute one** — a noindex starter page carrying a cookieless PostHog snippet lands in the document root (`--skip-posthog` leaves the snippet out), and `setup_autodeploy.py` warns if the repo it deploys later doesn't carry the snippet too
+- 📊 **tracked from minute one** — a noindex starter page carrying a cookieless PostHog snippet lands in the document root (`--skip-posthog` leaves the snippet out), and `setup_autodeploy.py` warns if the repo it deploys later doesn't carry the snippet too. with a PostHog personal api key set, the subdomain also joins the project's authorized urls — web analytics filters to those — and leaves them again on `--delete`
 - 💥 **fails loudly and early** — a missing credential names itself instead of turning into a confusing api error later
 
 ## setup

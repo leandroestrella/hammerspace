@@ -99,6 +99,15 @@ PostHog. it's a warning, not a failure — the deploy still goes through. paste
 [`assets/posthog-snippet.html`](../assets/posthog-snippet.html) into the
 repo's `<head>` before (or after) the deploy to keep tracking it.
 
+## "could not update the Authorized URLs"
+
+the PostHog step warns instead of failing, so the run still ends green. a 401
+or 403 means `POSTHOG_PERSONAL_API_KEY` is wrong, expired, or lacks the
+`project:write` scope on the project; a 404 means `POSTHOG_PROJECT_ID` or
+`POSTHOG_HOST` points at the wrong place. there's no need to recreate the
+subdomain: add the url the warning names by hand in the project settings
+(authorized urls), and fix the key for next time.
+
 ## namecheap
 
 `--with-dns-api` is untested against a live api and the account doesn't meet

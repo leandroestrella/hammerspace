@@ -24,7 +24,7 @@ way to see a traceback in full).
 | `skip_autossl` | **on** | leaves ssl alone; on by default because autossl needs a whm token nobody has set yet |
 | `skip_https_redirect` | off | skips writing the `.htaccess` redirect block |
 | `skip_starter_page` | off | skips writing a placeholder `index.html` that already carries the PostHog snippet; never overwrites an existing index |
-| `skip_posthog` | off | writes the starter page *without* the PostHog snippet, so the subdomain isn't tracked. with `skip_starter_page` on there's no page at all, so it changes nothing |
+| `skip_posthog` | off | writes the starter page *without* the PostHog snippet, so the subdomain isn't tracked, and skips the authorized urls step. with `skip_starter_page` on there's no page at all |
 
 ### delete subdomain
 
@@ -168,7 +168,7 @@ the examples above cover the common paths; these are all of them.
 | `--skip-autossl` | off | skip the autossl trigger (the workflow passes it by default) |
 | `--skip-https-redirect` | off | skip writing the `.htaccess` redirect block |
 | `--skip-starter-page` | off | skip writing a placeholder `index.html` with the PostHog snippet; never overwrites an existing index anyway |
-| `--skip-posthog` | off | write the placeholder `index.html` without the PostHog snippet: the subdomain isn't tracked |
+| `--skip-posthog` | off | write the placeholder `index.html` without the PostHog snippet: the subdomain isn't tracked, and isn't added to PostHog's authorized urls |
 
 #### `setup_autodeploy.py <project> --repo owner/name`
 
@@ -218,6 +218,14 @@ neither is needed for a subdomain that `create_subdomain.py` made.
    first minute. never overwrites an existing `index.html` or `index.php`; if
    it can't tell whether one exists, it stops rather than guess.
    `--skip-posthog` writes the same page without the snippet
+6. **PostHog authorized urls** — adds `https://<subdomain>.<root-domain>` to
+   the project's `app_urls`, because web analytics only shows traffic from
+   the domains listed there. it reads the list, appends, de-duplicates
+   (ignoring a trailing `/` and case) and patches it back, leaving every
+   other entry alone. skipped with a message when `POSTHOG_PERSONAL_API_KEY`
+   isn't set, and with `--skip-posthog`. an api error here is a warning, not a
+   failure — the subdomain already exists — and says what to add by hand.
+   `--delete` removes the url again as its last step, the same way
 
 each step prints what it's doing with a `[step]` prefix, so a failed run tells
 you exactly how far it got.

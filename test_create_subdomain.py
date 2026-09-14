@@ -273,3 +273,123 @@ def test_starter_page_escapa_il_nome():
     pagina = cs.costruisci_starter_page("<b>x</b>", "<script>posthog.init(</script>")
     assert "<b>x</b>" not in pagina
     assert "&lt;b&gt;x&lt;/b&gt;" in pagina
+
+
+# --------------------------------------------------------------------------- #
+# Authorized URLs di PostHog (LNDR-147)
+# --------------------------------------------------------------------------- #
+
+LAB = "https://lab.leandroestrella.com"
+ESISTENTI = ["https://leandroestrella.com", "https://www.leandroestrella.com"]
+
+
+def test_app_url_aggiunto_in_fondo_senza_toccare_gli_altri():
+    assert cs.aggiungi_app_url(ESISTENTI, LAB) == ESISTENTI + [LAB]
+    assert ESISTENTI == ["https://leandroestrella.com", "https://www.leandroestrella.com"]
+
+
+def test_app_url_gia_presente_non_duplicato():
+    assert cs.aggiungi_app_url(ESISTENTI + [LAB], LAB) == ESISTENTI + [LAB]
+
+
+@pytest.mark.parametrize("variante", [LAB + "/", LAB.upper(), f"  {LAB}  "])
+def test_app_url_varianti_riconosciute_come_duplicati(variante):
+    # La voce esistente resta com'era: non si riscrive quello che non e' nostro.
+    assert cs.aggiungi_app_url([variante], LAB) == [variante]
+
+
+def test_app_urls_duplicati_esistenti_ripuliti():
+    assert cs.aggiungi_app_url([LAB, ESISTENTI[0], LAB + "/"], LAB) == [LAB, ESISTENTI[0]]
+
+
+@pytest.mark.parametrize("vuoti", [None, []])
+def test_app_urls_vuoti(vuoti):
+    assert cs.aggiungi_app_url(vuoti, LAB) == [LAB]
+    assert cs.rimuovi_app_url(vuoti, LAB) == []
+
+
+def test_app_url_rimosso_in_tutte_le_varianti():
+    assert cs.rimuovi_app_url([ESISTENTI[0], LAB, LAB + "/", ESISTENTI[1]], LAB) == ESISTENTI
+
+
+def test_app_url_assente_rimozione_non_cambia_niente():
+    assert cs.rimuovi_app_url(ESISTENTI, LAB) == ESISTENTI
+
+
+def test_rimozione_non_tocca_altri_sottodomini():
+    # "lab" non deve portarsi via "lab2" o "www.lab".
+    altri = ["https://lab2.leandroestrella.com", "https://www.lab.leandroestrella.com"]
+    assert cs.rimuovi_app_url(altri + [LAB], LAB) == altri
+
+
+class _Risposta:
+    def __init__(self, status_code, data=None):
+        self.status_code = status_code
+        self.ok = status_code < 400
+        self._data = data or {}
+        self.text = str(self._data)
+
+    def json(self):
+        return self._data
+
+
+@pytest.fixture
+def posthog_finto(monkeypatch):
+    """Sostituisce requests con un finto progetto PostHog in memoria."""
+    stato = {"app_urls": list(ESISTENTI), "patch": [], "get": 0, "get_status": 200}
+    monkeypatch.setattr(cs, "POSTHOG_PERSONAL_API_KEY", "phx_finta")
+    monkeypatch.setattr(cs, "ROOT_DOMAIN", "leandroestrella.com")
+
+    def get(url, headers, timeout):
+        assert url == "https://eu.posthog.com/api/environments/139609/"
+        assert headers == {"Authorization": "Bearer phx_finta"}
+        stato["get"] += 1
+        return _Risposta(stato["get_status"], {"app_urls": list(stato["app_urls"])})
+
+    def patch(url, headers, json, timeout):
+        stato["patch"].append(json)
+        stato["app_urls"] = json["app_urls"]
+        return _Risposta(200, {"app_urls": list(stato["app_urls"])})
+
+    monkeypatch.setattr(cs.requests, "get", get)
+    monkeypatch.setattr(cs.requests, "patch", patch)
+    return stato
+
+
+def test_posthog_aggiunge_il_sottodominio(posthog_finto):
+    assert cs.aggiorna_app_urls_posthog("lab") is True
+    assert posthog_finto["patch"] == [{"app_urls": ESISTENTI + [LAB]}]
+
+
+def test_posthog_gia_presente_niente_patch(posthog_finto):
+    posthog_finto["app_urls"].append(LAB)
+    assert cs.aggiorna_app_urls_posthog("lab") is True
+    assert posthog_finto["patch"] == []
+
+
+def test_posthog_rimuove_il_sottodominio(posthog_finto):
+    posthog_finto["app_urls"].append(LAB)
+    assert cs.aggiorna_app_urls_posthog("lab", rimuovi=True) is True
+    assert posthog_finto["patch"] == [{"app_urls": ESISTENTI}]
+
+
+def test_posthog_senza_chiave_saltato(posthog_finto, monkeypatch, capsys):
+    monkeypatch.setattr(cs, "POSTHOG_PERSONAL_API_KEY", None)
+    assert cs.aggiorna_app_urls_posthog("lab") is False
+    assert posthog_finto["get"] == 0
+    assert "POSTHOG_PERSONAL_API_KEY is not set" in capsys.readouterr().out
+
+
+def test_posthog_dry_run_nessuna_chiamata(posthog_finto):
+    assert cs.aggiorna_app_urls_posthog("lab", dry_run=True) is True
+    assert posthog_finto["get"] == 0
+    assert posthog_finto["patch"] == []
+
+
+def test_posthog_chiave_senza_scope_e_un_warning(posthog_finto, capsys):
+    # Il sottodominio esiste gia': un errore qui non deve far fallire il run.
+    posthog_finto["get_status"] = 403
+    assert cs.aggiorna_app_urls_posthog("lab") is False
+    assert posthog_finto["patch"] == []
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "project:write" in out

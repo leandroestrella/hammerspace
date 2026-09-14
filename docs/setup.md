@@ -18,6 +18,9 @@ what you need before the first run, in both places the scripts can run from.
 | `NAMECHEAP_API_KEY` | no | namecheap → profile → tools → api access |
 | `NAMECHEAP_USERNAME` | no | defaults to `NAMECHEAP_API_USER` |
 | `NAMECHEAP_CLIENT_IP` | no | must be whitelisted in namecheap → api access |
+| `POSTHOG_PERSONAL_API_KEY` | no | PostHog → settings → personal api keys, scope `project:write`. without it, the authorized urls step is skipped |
+| `POSTHOG_HOST` | no | defaults to `https://eu.posthog.com` |
+| `POSTHOG_PROJECT_ID` | no | defaults to `139609` |
 | `GITHUB_PAT` | for auto-deploy and gitflow | a personal access token that can write to the **target** repo — see below |
 
 a missing variable fails immediately, naming exactly which ones are absent —
@@ -28,6 +31,13 @@ nothing half-runs.
 the **cpanel** token acts as one account and can do everything here except ssl.
 the **whm** token acts at server level and is the only thing that can trigger
 autossl. a cpanel token in `WHM_API_TOKEN` will not work.
+
+### the PostHog key is not the snippet's key
+
+the `phc_` key inside [`assets/posthog-snippet.html`](../assets/posthog-snippet.html)
+is ingestion-only and public by design. `POSTHOG_PERSONAL_API_KEY` is a
+`phx_` personal api key that can change project settings — keep it scoped to
+`project:write` on the one project, and out of the repo like every other secret.
 
 ### the github token is not `GITHUB_TOKEN`
 
@@ -99,8 +109,10 @@ SERVER_IP
 ```
 
 that's enough for creating and deleting subdomains. add the `WHM_*` secrets
-when you want autossl, and the `NAMECHEAP_*` ones only if you'll use
-`--with-dns-api`.
+when you want autossl, the `NAMECHEAP_*` ones only if you'll use
+`--with-dns-api`, and `POSTHOG_PERSONAL_API_KEY` if new subdomains should be
+added to PostHog's authorized urls by themselves (both the create and delete
+workflows read it).
 
 for the auto-deploy and gitflow workflows, add one more:
 

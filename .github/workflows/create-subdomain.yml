@@ -69,6 +69,8 @@ jobs:
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
           NAMECHEAP_USERNAME: ${{ secrets.NAMECHEAP_USERNAME }}
           NAMECHEAP_CLIENT_IP: ${{ secrets.NAMECHEAP_CLIENT_IP }}
+          # PostHog: serve solo ad aggiungere il sottodominio agli Authorized URLs.
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
           # Gli input passano dall'ambiente, NON interpolati dentro lo script:
           # "${{ inputs.subdomain }}" verrebbe incollato prima che bash lo parsi,
           # e un valore tipo  x") ; comando ; ARGS=("y  eseguirebbe codice

@@ -35,6 +35,7 @@ flowchart LR
     CLI -->|branch, secrets, workflow di deploy| GH[api github]
     CLI -.->|autossl, opzionale| WHM[api whm]
     CLI -.->|record a, opzionale| NC[api namecheap]
+    CLI -.->|authorized urls, opzionale| PH[api posthog]
     UAPI --> SRV[(il tuo server)]
     API2 --> SRV
     GH -->|push| SRV
@@ -49,7 +50,7 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 
 | strumento | cosa fa |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https e scrive una pagina iniziale con PostHog già integrato (o senza, con `--skip-posthog`). opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
+| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https, scrive una pagina iniziale con PostHog già integrato (o senza, con `--skip-posthog`), e aggiunge il sottodominio agli authorized urls di PostHog perché web analytics lo mostri. opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | collega un repo github a quel sottodominio: crea l'account ftp, scrive i tre secret `FTP_*` sul repo di destinazione e ci committa un workflow di deploy, così ogni push pubblica. smonta anche tutto quanto. |
 | [`setup_gitflow.py`](./setup_gitflow.py) | prepara un repo github per il [gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow): un commit iniziale se è vuoto, e un branch `develop` accanto a `master`. `setup_autodeploy.py` lo lancia da solo su un repo vuoto. |
 
@@ -67,7 +68,7 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 - 🛡 **i path si leggono, non si indovinano** — la document root arriva da cpanel stesso, e tutto ciò che sta fuori dalla home (o è `public_html`) viene rifiutato
 - 🚫 **non sovrascrive ciò che non ha scritto lui** — un `.htaccess` o un workflow di deploy già presenti fermano il run invece di essere rimpiazzati
 - 🌐 **il dns di solito non serve** — un record wildcard creato una volta sola fa risolvere ogni sottodominio nel momento in cui esiste
-- 📊 **tracciato dal primo minuto** — una pagina iniziale noindex con uno snippet PostHog senza cookie finisce nella document root (`--skip-posthog` per farne a meno), e `setup_autodeploy.py` avvisa se il repo che poi fa deploy non porta anche lui lo snippet
+- 📊 **tracciato dal primo minuto** — una pagina iniziale noindex con uno snippet PostHog senza cookie finisce nella document root (`--skip-posthog` per farne a meno), e `setup_autodeploy.py` avvisa se il repo che poi fa deploy non porta anche lui lo snippet. con una personal api key di PostHog impostata, il sottodominio entra anche negli authorized urls del progetto — web analytics filtra su quelli — e ne esce con `--delete`
 - 💥 **fallisce presto e a voce alta** — una credenziale mancante si annuncia per nome, invece di trasformarsi in un errore api incomprensibile più avanti
 
 ## installazione

@@ -21,6 +21,10 @@ Uso:
     python3 create_subdomain.py lab --with-dns-api   # solo se serve un record dedicato
     python3 create_subdomain.py lab --skip-posthog   # pagina iniziale senza PostHog
 
+Con POSTHOG_PERSONAL_API_KEY impostata, il sottodominio viene anche aggiunto
+agli Authorized URLs (app_urls) del progetto PostHog, e tolto con --delete:
+Web analytics mostra solo il traffico dei domini in quella lista.
+
 Rimozione:
     python3 create_subdomain.py lab --delete                        # solo il sottodominio
     python3 create_subdomain.py lab --delete --with-files           # + cartella nel cestino
@@ -64,6 +68,13 @@ NAMECHEAP_CLIENT_IP = os.environ.get("NAMECHEAP_CLIENT_IP")  # IP whitelisted in
 NAMECHEAP_API_BASE = os.environ.get(
     "NAMECHEAP_API_BASE", "https://api.namecheap.com/xml.response"
 )
+
+# Facoltativo: serve solo per aggiungere/togliere il sottodominio dagli
+# Authorized URLs del progetto PostHog (LNDR-147). E' una personal API key
+# (phx_...) con scope project:write, NON la chiave phc_ pubblica dello snippet.
+POSTHOG_PERSONAL_API_KEY = os.environ.get("POSTHOG_PERSONAL_API_KEY")
+POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://eu.posthog.com")
+POSTHOG_PROJECT_ID = os.environ.get("POSTHOG_PROJECT_ID", "139609")
 
 
 def log(step, msg):
@@ -714,6 +725,127 @@ def write_starter_page(subdomain, posthog=True, dry_run=False):
 
 
 # --------------------------------------------------------------------------- #
+# 6. PostHog: Authorized URLs del progetto (REST API environments) - LNDR-147
+#
+# Da quando il progetto ha degli Authorized URLs (app_urls), Web analytics
+# filtra sui soli domini in quella lista: il traffico di un sottodominio nuovo
+# arriva comunque, ma non si vede finche' il suo URL non ci viene aggiunto.
+#
+# L'API non ha un "append": PATCH sostituisce l'intera lista. Quindi, come per
+# setHosts di Namecheap, si legge quella esistente e si rimanda tutta. Tra GET
+# e PATCH non c'e' nessun lock: una modifica fatta a mano nello stesso istante
+# andrebbe persa, ma per un'operazione lanciata a mano ogni tanto va bene.
+#
+# Lo step e' facoltativo e non blocca mai il resto: senza la chiave si salta,
+# e un errore dell'API diventa un WARNING con la strada manuale, perche' a quel
+# punto il sottodominio e' gia' stato creato (o rimosso) davvero.
+# --------------------------------------------------------------------------- #
+
+POSTHOG_SETTINGS_PATH = "project settings -> Authorized URLs"
+
+
+def url_sottodominio(subdomain):
+    return f"https://{subdomain}.{ROOT_DOMAIN}"
+
+
+def _chiave_url(url):
+    """Forma normalizzata per il confronto: niente slash finale, minuscolo."""
+    return str(url).strip().rstrip("/").lower()
+
+
+def aggiungi_app_url(app_urls, url):
+    """Nuova lista app_urls con `url` in fondo. Funzione pura: testata senza rete.
+
+    Le voci esistenti restano com'erano e nell'ordine in cui erano; i
+    duplicati (anche solo per slash finale o maiuscole) spariscono, tenendo
+    la prima occorrenza.
+    """
+    risultato, visti = [], set()
+    for voce in list(app_urls or []) + [url]:
+        if not voce or _chiave_url(voce) in visti:
+            continue
+        visti.add(_chiave_url(voce))
+        risultato.append(voce)
+    return risultato
+
+
+def rimuovi_app_url(app_urls, url):
+    """Nuova lista app_urls senza `url` (in nessuna delle sue varianti)."""
+    return [v for v in (app_urls or []) if v and _chiave_url(v) != _chiave_url(url)]
+
+
+def posthog_headers():
+    return {"Authorization": f"Bearer {POSTHOG_PERSONAL_API_KEY}"}
+
+
+def _posthog_json(resp, operazione):
+    """Esito di una chiamata PostHog, con un errore parlante sui casi tipici."""
+    if resp.status_code in (401, 403):
+        raise RuntimeError(
+            f"{operazione} refused ({resp.status_code}): POSTHOG_PERSONAL_API_KEY must be a "
+            f"personal API key with the 'project:write' scope on project {POSTHOG_PROJECT_ID}."
+        )
+    if resp.status_code == 404:
+        raise RuntimeError(
+            f"{operazione}: project {POSTHOG_PROJECT_ID} not found on {POSTHOG_HOST} (404). "
+            "Check POSTHOG_PROJECT_ID and POSTHOG_HOST."
+        )
+    if not resp.ok:
+        raise RuntimeError(f"{operazione} failed ({resp.status_code}): {resp.text[:300]}")
+    return resp.json()
+
+
+def aggiorna_app_urls_posthog(subdomain, rimuovi=False, dry_run=False):
+    """Aggiunge (o con rimuovi=True toglie) il sottodominio dagli app_urls."""
+    url = url_sottodominio(subdomain)
+    if not POSTHOG_PERSONAL_API_KEY:
+        log(
+            "PostHog",
+            "POSTHOG_PERSONAL_API_KEY is not set: skipping the Authorized URLs step. "
+            f"{'Remove' if rimuovi else 'Add'} {url} by hand in PostHog -> {POSTHOG_SETTINGS_PATH}"
+            + ("." if rimuovi else ", or Web analytics won't show its traffic."),
+        )
+        return False
+
+    api_url = f"{POSTHOG_HOST.rstrip('/')}/api/environments/{POSTHOG_PROJECT_ID}/"
+    azione = "Removing" if rimuovi else "Adding"
+    log("PostHog", f"{azione} {url} {'from' if rimuovi else 'to'} the Authorized URLs of project {POSTHOG_PROJECT_ID}")
+    if dry_run:
+        log("PostHog", f"[dry-run] Would GET {api_url} and PATCH its app_urls (no call made).")
+        return True
+
+    try:
+        attuali = _posthog_json(
+            requests.get(api_url, headers=posthog_headers(), timeout=30), "Reading the project"
+        ).get("app_urls") or []
+        nuovi = rimuovi_app_url(attuali, url) if rimuovi else aggiungi_app_url(attuali, url)
+        if nuovi == attuali:
+            log("PostHog", f"{url} is already {'absent' if rimuovi else 'listed'}, nothing to do.")
+            return True
+
+        salvati = _posthog_json(
+            requests.patch(api_url, headers=posthog_headers(), json={"app_urls": nuovi}, timeout=30),
+            "Updating the Authorized URLs",
+        ).get("app_urls") or []
+        presente = any(_chiave_url(v) == _chiave_url(url) for v in salvati)
+        if presente == rimuovi:
+            raise RuntimeError(f"PostHog accepted the update but its app_urls are now {salvati}.")
+    except (requests.exceptions.RequestException, RuntimeError, ValueError) as e:
+        log(
+            "PostHog",
+            f"WARNING: could not update the Authorized URLs ({e}). "
+            f"{'Remove' if rimuovi else 'Add'} {url} by hand in PostHog -> {POSTHOG_SETTINGS_PATH}.",
+        )
+        return False
+
+    if rimuovi:
+        log("PostHog", f"{url} removed from the Authorized URLs ({len(salvati)} left).")
+    else:
+        log("PostHog", f"{url} added to the Authorized URLs: its traffic shows up in Web analytics.")
+    return True
+
+
+# --------------------------------------------------------------------------- #
 # Orchestrazione
 # --------------------------------------------------------------------------- #
 
@@ -761,7 +893,7 @@ def main():
     parser.add_argument(
         "--skip-posthog", action="store_true",
         help="Write the starter page without the PostHog snippet: the subdomain "
-             "is not tracked.",
+             "is not tracked, and is not added to PostHog's Authorized URLs.",
     )
     args = parser.parse_args()
 
@@ -797,6 +929,8 @@ def main():
             )
         else:
             log("Docroot", f"Folder ~/{subdomain} left on the server (use --with-files to remove it).")
+        # Per ultimo: se fallisce e' solo un WARNING, e il sottodominio e' gia' via.
+        aggiorna_app_urls_posthog(subdomain, rimuovi=True, dry_run=args.dry_run)
         log("Done", f"Subdomain {subdomain}.{ROOT_DOMAIN} removed (or simulated, with --dry-run).")
         return
 
@@ -826,6 +960,14 @@ def main():
         write_starter_page(subdomain, posthog=not args.skip_posthog, dry_run=args.dry_run)
     else:
         log("Starter page", "Step skipped (--skip-starter-page).")
+
+    # Senza PostHog il sottodominio non e' tracciato: non c'e' niente da
+    # autorizzare. Con --skip-starter-page invece si procede lo stesso, perche'
+    # il primo deploy puo' comunque portare lo snippet.
+    if not args.skip_posthog:
+        aggiorna_app_urls_posthog(subdomain, dry_run=args.dry_run)
+    else:
+        log("PostHog", "Authorized URLs step skipped (--skip-posthog).")
 
     log("Done", f"Subdomain {subdomain}.{ROOT_DOMAIN} ready (or simulated, with --dry-run).")
 
