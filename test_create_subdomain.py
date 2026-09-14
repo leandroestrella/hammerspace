@@ -217,7 +217,8 @@ def test_snippet_canonico_e_cookieless():
     assert "posthog.init(" in s
     assert "cookieless_mode: 'always'" in s
     assert "person_profiles: 'never'" in s
-    assert "api_host: 'https://eu.i.posthog.com'" in s
+    assert "api_host: 'https://relay.leandroestrella.com'" in s
+    assert "ui_host: 'https://eu.posthog.com'" in s
 
 
 def test_snippet_non_identifica_mai():
