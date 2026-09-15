@@ -357,7 +357,7 @@ def test_status_inatteso_riporta_il_codice():
 
 
 # --------------------------------------------------------------------------- #
-# Controllo dello snippet PostHog (LNDR-129)
+# Controllo dello snippet PostHog
 # --------------------------------------------------------------------------- #
 
 def _blob(path):

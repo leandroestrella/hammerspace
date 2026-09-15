@@ -209,7 +209,7 @@ def test_api2_fallimento(data):
 
 
 # --------------------------------------------------------------------------- #
-# Pagina iniziale con PostHog (LNDR-129)
+# Pagina iniziale con PostHog
 # --------------------------------------------------------------------------- #
 
 def test_snippet_canonico_e_cookieless():
@@ -277,7 +277,7 @@ def test_starter_page_escapa_il_nome():
 
 
 # --------------------------------------------------------------------------- #
-# Authorized URLs di PostHog (LNDR-147)
+# Authorized URLs di PostHog
 # --------------------------------------------------------------------------- #
 
 LAB = "https://lab.leandroestrella.com"

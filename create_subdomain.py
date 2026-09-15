@@ -70,7 +70,7 @@ NAMECHEAP_API_BASE = os.environ.get(
 )
 
 # Facoltativo: serve solo per aggiungere/togliere il sottodominio dagli
-# Authorized URLs del progetto PostHog (LNDR-147). E' una personal API key
+# Authorized URLs del progetto PostHog. E' una personal API key
 # (phx_...) con scope project:write, NON la chiave phc_ pubblica dello snippet.
 POSTHOG_PERSONAL_API_KEY = os.environ.get("POSTHOG_PERSONAL_API_KEY")
 POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://eu.posthog.com")
@@ -605,7 +605,7 @@ def force_https_redirect(subdomain, dry_run=False):
 
 
 # --------------------------------------------------------------------------- #
-# 5. Pagina iniziale con PostHog (UAPI Fileman) - LNDR-129
+# 5. Pagina iniziale con PostHog (UAPI Fileman)
 #
 # Un sottodominio appena creato ha la document root vuota: non esiste un
 # template da cui "ereditare" lo snippet di analytics. Qui se ne scrive uno
@@ -668,7 +668,7 @@ def costruisci_starter_page(fqdn, snippet=None):
         "</head>\n"
         "<body>\n"
         f"    <p>{nome} is being set up.</p>\n"
-        # Every leandroestrella.com property links the shared privacy notice (LNDR-156).
+        # Every leandroestrella.com property links the shared privacy notice.
         '    <p><a href="https://leandroestrella.com/privacy.html" aria-label="privacy policy" title="privacy">🛡️</a></p>\n'
         "</body>\n"
         "</html>\n"
@@ -727,7 +727,7 @@ def write_starter_page(subdomain, posthog=True, dry_run=False):
 
 
 # --------------------------------------------------------------------------- #
-# 6. PostHog: Authorized URLs del progetto (REST API environments) - LNDR-147
+# 6. PostHog: Authorized URLs del progetto (REST API environments)
 #
 # Da quando il progetto ha degli Authorized URLs (app_urls), Web analytics
 # filtra sui soli domini in quella lista: il traffico di un sottodominio nuovo

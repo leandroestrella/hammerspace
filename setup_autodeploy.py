@@ -627,7 +627,7 @@ def elimina_workflow(owner, repo, branch, path=WORKFLOW_PATH, dry_run=False):
 # --------------------------------------------------------------------------- #
 
 # --------------------------------------------------------------------------- #
-# Controllo dello snippet PostHog nel repository (LNDR-129)
+# Controllo dello snippet PostHog nel repository
 #
 # create_subdomain.py mette online una pagina iniziale gia' strumentata, ma
 # il primo deploy la sostituisce con l'HTML del repository: se quel
