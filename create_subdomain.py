@@ -668,6 +668,8 @@ def costruisci_starter_page(fqdn, snippet=None):
         "</head>\n"
         "<body>\n"
         f"    <p>{nome} is being set up.</p>\n"
+        # Every leandroestrella.com property links the shared privacy notice (LNDR-156).
+        '    <p><a href="https://leandroestrella.com/privacy.html" aria-label="privacy policy" title="privacy">🛡️</a></p>\n'
         "</body>\n"
         "</html>\n"
     )

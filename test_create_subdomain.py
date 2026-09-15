@@ -258,6 +258,7 @@ def test_starter_page_contiene_snippet_e_titolo():
     assert "<title>lab.example.com</title>" in pagina
     assert pagina.index("posthog.init(") < pagina.index("</head>")
     assert '<meta name="robots" content="noindex">' in pagina
+    assert 'href="https://leandroestrella.com/privacy.html"' in pagina
 
 
 def test_starter_page_senza_posthog():
