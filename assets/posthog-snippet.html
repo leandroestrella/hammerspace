@@ -17,6 +17,8 @@
             defaults: '2026-08-30',
             cookieless_mode: 'always',
             person_profiles: 'never',
+            // Owner's devices carry lndr_ph_off on .leandroestrella.com: send nothing.
+            before_send: function (event) { return /(?:^|; )lndr_ph_off=1/.test(document.cookie) ? null : event },
         })
         posthog.register({ project: '__PROJECT__' })
     </script>
