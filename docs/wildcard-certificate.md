@@ -156,6 +156,37 @@ are still in the account's certificate store: reinstall each one with
 notes](cpanel-api.md#restoring-a-certificate-from-the-store) for pairing a
 certificate with its key.
 
+## the other trap: cpanel's service subdomains lose autossl
+
+cpanel answers `cpanel.`, `webmail.`, `webdisk.`, `cpcalendars.`,
+`cpcontacts.`, `autoconfig.` and `autodiscover.example.com` itself (its "proxy
+subdomains"), and autossl adds them to the main domain's certificate. to prove
+control it writes the challenge file into the **main** document root,
+`~/public_html/.well-known/acme-challenge/`.
+
+once the `*` catch-all exists, plain-http requests for those names reach the
+catch-all's virtual host instead, served from **its** document root. the
+challenge file isn't there, the 404 page falls into the catch-all's redirect,
+and autossl receives the homepage. it gives up with *"The response exceeded
+the maximum length (16 KB)"* in cpanel → SSL/TLS Status, and the next renewal
+drops those names from the main certificate. https is unaffected, which is why
+the sites themselves look fine.
+
+the fix is to point the catch-all's challenge folder at the main one:
+
+```bash
+mkdir -p ~/<catch-all docroot>/.well-known
+ln -sfn ~/public_html/.well-known/acme-challenge ~/<catch-all docroot>/.well-known/acme-challenge
+```
+
+the catch-all's `.htaccess` already lets `.well-known/` through, and the
+wildcard certificate itself validates over dns, so nothing else reads that
+folder. without a shell, run it as a one-off cron job the same way as the setup
+script above. check it by dropping a file in
+`~/public_html/.well-known/acme-challenge/` and fetching
+`http://cpanel.example.com/.well-known/acme-challenge/<file>`: it must return
+the file, not a redirect.
+
 ## when something's off
 
 - **renewal:** `renew-last-run.log` next to the script holds the last cron
