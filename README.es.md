@@ -31,10 +31,9 @@ flowchart LR
     YOU[tú] -->|pestaña actions| GHA[github actions]
     YOU -->|terminal| CLI[los scripts]
     GHA --> CLI
-    CLI -->|subdominio, .htaccess, cuenta ftp| UAPI[cpanel uapi]
+    CLI -->|subdominio, .htaccess, autossl, cuenta ftp| UAPI[cpanel uapi]
     CLI -->|borra subdominio y archivos| API2[cpanel api2]
     CLI -->|ramas, secrets, workflow de despliegue| GH[api github]
-    CLI -.->|autossl, opcional| WHM[api whm]
     CLI -.->|registro a, opcional| NC[api namecheap]
     CLI -.->|authorized urls, opcional| PH[api posthog]
     UAPI --> SRV[(tu servidor)]
@@ -52,7 +51,7 @@ github](docs/github-api.md).
 
 | herramienta | qué hace |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | crea un subdominio en cpanel, apunta su document root a `~/<nombre>`, fuerza la redirección https, deja una página inicial con PostHog integrado (o sin él, con `--skip-posthog`), y añade el subdominio a las authorized urls de PostHog para que web analytics lo muestre. opcionalmente lanza autossl y crea un registro dns dedicado. también lo borra, con o sin sus archivos. |
+| [`create_subdomain.py`](./create_subdomain.py) | crea un subdominio en cpanel, apunta su document root a `~/<nombre>`, fuerza la redirección https, deja una página inicial con PostHog integrado (o sin él, con `--skip-posthog`), añade el subdominio a las authorized urls de PostHog para que web analytics lo muestre, y lanza autossl. opcionalmente crea un registro dns dedicado. también lo borra, con o sin sus archivos. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | conecta un repo de github con ese subdominio: crea la cuenta ftp, escribe los tres secrets `FTP_*` en el repo de destino y le hace commit de un workflow de despliegue, para que cada push publique. también lo desmonta todo. |
 | [`setup_gitflow.py`](./setup_gitflow.py) | prepara un repo de github para [gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow): un commit inicial si está vacío, y una rama `develop` junto a `master`. `setup_autodeploy.py` lo lanza por su cuenta cuando el repo está vacío. |
 

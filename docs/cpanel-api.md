@@ -121,18 +121,19 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 `SSL::toggle_ssl_redirect_for_domains` shows up in third-party api docs as the
 likely real function, but it has never been tested here.
 
-## autossl: a user token can start it after all
+## autossl: a user token is enough
 
-`create_subdomain.py` starts autossl through whm's `start_autossl_check` on port
-**2087**, which does need a root/reseller token — a cpanel token won't
-authenticate there, no matter how it's formatted. see [setup](setup.md).
+whm's `start_autossl_check` on port **2087** needs a root/reseller token — a
+cpanel token won't authenticate there, no matter how it's formatted. that used
+to keep autossl out of `create_subdomain.py`.
 
-but uapi has its own `SSL::start_autossl_check` on 2083, and an ordinary cpanel
-user token runs it for the account: verified, it returns `status: 1` and
+uapi has its own `SSL::start_autossl_check` on **2083**, and an ordinary cpanel
+user token runs it for the account: it returns `status: 1`, and
 `SSL::get_autossl_problems` picks up a subdomain created two minutes earlier.
-switching the tool to it would drop the whm dependency. the rest of the family
-works with the same token: `SSL::is_autossl_check_in_progress`,
-`SSL::get_autossl_problems`, `SSL::get_autossl_excluded_domains` and
+that's what the script calls now. the rest of the family works with the same
+token: `SSL::is_autossl_check_in_progress` (`data` is `1` while running, `0`
+when idle), `SSL::get_autossl_problems` (rows of `domain`, `problem`, `time`,
+for the whole account), `SSL::get_autossl_excluded_domains` and
 `SSL::add_autossl_excluded_domains`.
 
 one thing autossl can't do here is a **wildcard**. let's encrypt only issues

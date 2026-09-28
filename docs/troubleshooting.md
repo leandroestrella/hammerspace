@@ -32,12 +32,14 @@ curl -s "https://$CPANEL_HOST:2083/execute/DomainInfo/list_domains" \
 
 ## https shows a certificate warning
 
-expected until autossl runs. without a certificate of its own the subdomain is
+expected until autossl has issued the subdomain's certificate — usually a few
+minutes after creation. without a certificate of its own the subdomain is
 served the server's default one — which on a shared ip belongs to some other
 site entirely, so you may even get redirected somewhere unrelated. plain
 `http://` still redirects correctly; it's only the certificate that's missing.
 
-see [ssl](usage.md#ssl) for enabling autossl.
+if it lasts, read `SSL::get_autossl_problems` (or run the create step with
+`--autossl-wait`); see [ssl](usage.md#ssl).
 
 ## the subdomain doesn't resolve
 

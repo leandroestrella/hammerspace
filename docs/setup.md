@@ -11,9 +11,6 @@ what you need before the first run, in both places the scripts can run from.
 | `CPANEL_API_TOKEN` | yes | cpanel → security → **manage api tokens** → create |
 | `ROOT_DOMAIN` | yes | the domain the subdomains hang off, e.g. `example.com` |
 | `SERVER_IP` | yes | the ip subdomains point at (only actually used by the dns step) |
-| `WHM_HOST` | no | defaults to `CPANEL_HOST` |
-| `WHM_USER` | no | the reseller's whm username — **not** `root` unless you really are root |
-| `WHM_API_TOKEN` | no | whm → development → manage api tokens. without it, autossl is skipped |
 | `NAMECHEAP_API_USER` | no | only for `--with-dns-api` |
 | `NAMECHEAP_API_KEY` | no | namecheap → profile → tools → api access |
 | `NAMECHEAP_USERNAME` | no | defaults to `NAMECHEAP_API_USER` |
@@ -26,11 +23,11 @@ what you need before the first run, in both places the scripts can run from.
 a missing variable fails immediately, naming exactly which ones are absent —
 nothing half-runs.
 
-### the two cpanel token levels are not interchangeable
+### one cpanel token covers everything, ssl included
 
-the **cpanel** token acts as one account and can do everything here except ssl.
-the **whm** token acts at server level and is the only thing that can trigger
-autossl. a cpanel token in `WHM_API_TOKEN` will not work.
+the **cpanel** user token acts as one account, and that's all these scripts
+need — autossl too, through uapi's `SSL::start_autossl_check`. no whm
+(root/reseller) token is involved; see [cpanel api notes](cpanel-api.md#autossl-a-user-token-is-enough).
 
 ### the PostHog key is not the snippet's key
 
@@ -108,8 +105,8 @@ ROOT_DOMAIN
 SERVER_IP
 ```
 
-that's enough for creating and deleting subdomains. add the `WHM_*` secrets
-when you want autossl, the `NAMECHEAP_*` ones only if you'll use
+that's enough for creating and deleting subdomains, autossl included. add the
+`NAMECHEAP_*` secrets only if you'll use
 `--with-dns-api`, and `POSTHOG_PERSONAL_API_KEY` if new subdomains should be
 added to PostHog's authorized urls by themselves (both the create and delete
 workflows read it).

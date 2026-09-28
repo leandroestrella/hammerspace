@@ -21,7 +21,12 @@ on:
         description: "Skip the AutoSSL step"
         required: false
         type: boolean
-        default: true
+        default: false
+      autossl_wait:
+        description: "Seconds to wait for the AutoSSL check and report its problems (0 = don't wait)"
+        required: false
+        type: number
+        default: 300
       skip_https_redirect:
         description: "Skip writing the .htaccess block for the HTTPS redirect"
         required: false
@@ -60,10 +65,6 @@ jobs:
           CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
           ROOT_DOMAIN: ${{ secrets.ROOT_DOMAIN }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
-          # WHM: serve solo ad AutoSSL, saltato di default finché non c'è il token.
-          WHM_HOST: ${{ secrets.WHM_HOST }}
-          WHM_USER: ${{ secrets.WHM_USER }}
-          WHM_API_TOKEN: ${{ secrets.WHM_API_TOKEN }}
           # Namecheap: serve solo con with_dns_api.
           NAMECHEAP_API_USER: ${{ secrets.NAMECHEAP_API_USER }}
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
@@ -79,6 +80,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           WITH_DNS_API: ${{ inputs.with_dns_api }}
           SKIP_AUTOSSL: ${{ inputs.skip_autossl }}
+          AUTOSSL_WAIT: ${{ inputs.autossl_wait }}
           SKIP_HTTPS_REDIRECT: ${{ inputs.skip_https_redirect }}
           SKIP_STARTER_PAGE: ${{ inputs.skip_starter_page }}
           SKIP_POSTHOG: ${{ inputs.skip_posthog }}
@@ -87,6 +89,7 @@ jobs:
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
           [ "$WITH_DNS_API" = "true" ] && ARGS+=(--with-dns-api)
           [ "$SKIP_AUTOSSL" = "true" ] && ARGS+=(--skip-autossl)
+          ARGS+=(--autossl-wait "$AUTOSSL_WAIT")
           [ "$SKIP_HTTPS_REDIRECT" = "true" ] && ARGS+=(--skip-https-redirect)
           [ "$SKIP_STARTER_PAGE" = "true" ] && ARGS+=(--skip-starter-page)
           [ "$SKIP_POSTHOG" = "true" ] && ARGS+=(--skip-posthog)

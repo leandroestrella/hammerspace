@@ -60,7 +60,7 @@ jobs:
       - name: Remove the subdomain
         env:
           # La cancellazione tocca cPanel e, se c'e' la chiave, gli Authorized
-          # URLs di PostHog: niente SERVER_IP, WHM o Namecheap.
+          # URLs di PostHog: niente SERVER_IP o Namecheap.
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
           CPANEL_USER: ${{ secrets.CPANEL_USER }}
           CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}

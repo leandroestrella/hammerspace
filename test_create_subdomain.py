@@ -394,3 +394,100 @@ def test_posthog_chiave_senza_scope_e_un_warning(posthog_finto, capsys):
     assert posthog_finto["patch"] == []
     out = capsys.readouterr().out
     assert "WARNING" in out and "project:write" in out
+
+
+# --------------------------------------------------------------------------- #
+# AutoSSL via UAPI
+# --------------------------------------------------------------------------- #
+
+def _problema(dominio):
+    return {"domain": dominio, "problem": "HTTP DCV: ...", "time": "2026-09-28T16:26:18Z"}
+
+
+def test_problemi_solo_del_sottodominio():
+    righe = [_problema("lab.leandroestrella.com"), _problema("altro.leandroestrella.com")]
+    assert cs.problemi_autossl(righe, "lab.leandroestrella.com") == [righe[0]]
+
+
+def test_problemi_www_ignorati():
+    # www.<sub> non risolve con un wildcard di un solo livello: rumore atteso.
+    righe = [_problema("www.lab.leandroestrella.com")]
+    assert cs.problemi_autossl(righe, "lab.leandroestrella.com") == []
+
+
+def test_problemi_confronto_senza_maiuscole():
+    righe = [_problema("Lab.LeandroEstrella.com")]
+    assert cs.problemi_autossl(righe, "lab.leandroestrella.com") == righe
+
+
+@pytest.mark.parametrize("righe", [None, []])
+def test_problemi_nessuna_riga(righe):
+    assert cs.problemi_autossl(righe, "lab.leandroestrella.com") == []
+
+
+@pytest.fixture
+def autossl_finto(monkeypatch):
+    """Sostituisce requests con un finto SSL:: di cPanel in memoria."""
+    stato = {"chiamate": [], "in_corso": [1, 0], "problemi": [], "start_status": 1}
+    monkeypatch.setattr(cs, "CPANEL_HOST", "server.example.com")
+    monkeypatch.setattr(cs, "CPANEL_USER", "utente")
+    monkeypatch.setattr(cs, "CPANEL_API_TOKEN", "token")
+    monkeypatch.setattr(cs, "ROOT_DOMAIN", "leandroestrella.com")
+    monkeypatch.setattr(cs.time, "sleep", lambda s: None)
+
+    def get(url, headers, timeout):
+        assert url.startswith("https://server.example.com:2083/execute/SSL/")
+        assert headers == {"Authorization": "cpanel utente:token"}
+        funzione = url.rsplit("/", 1)[1]
+        stato["chiamate"].append(funzione)
+        if funzione == "start_autossl_check":
+            return _Risposta(200, {"status": stato["start_status"], "data": None,
+                                   "errors": None if stato["start_status"] else ["no"]})
+        if funzione == "is_autossl_check_in_progress":
+            return _Risposta(200, {"status": 1, "data": stato["in_corso"].pop(0)})
+        if funzione == "get_autossl_problems":
+            return _Risposta(200, {"status": 1, "data": stato["problemi"]})
+        raise AssertionError(funzione)
+
+    monkeypatch.setattr(cs.requests, "get", get)
+    return stato
+
+
+def test_autossl_dry_run_nessuna_chiamata(autossl_finto):
+    assert cs.run_autossl("lab", dry_run=True, wait_seconds=60) is True
+    assert autossl_finto["chiamate"] == []
+
+
+def test_autossl_senza_attesa_solo_avvio(autossl_finto):
+    assert cs.run_autossl("lab") is True
+    assert autossl_finto["chiamate"] == ["start_autossl_check"]
+
+
+def test_autossl_attende_e_legge_i_problemi(autossl_finto):
+    autossl_finto["problemi"] = [_problema("www.lab.leandroestrella.com")]
+    assert cs.run_autossl("lab", wait_seconds=60) is True
+    assert autossl_finto["chiamate"] == [
+        "start_autossl_check",
+        "is_autossl_check_in_progress",
+        "is_autossl_check_in_progress",
+        "get_autossl_problems",
+    ]
+
+
+def test_autossl_problema_del_sottodominio_e_un_warning(autossl_finto, capsys):
+    autossl_finto["problemi"] = [_problema("lab.leandroestrella.com")]
+    assert cs.run_autossl("lab", wait_seconds=60) is False
+    assert "WARNING: lab.leandroestrella.com" in capsys.readouterr().out
+
+
+def test_autossl_avvio_fallito(autossl_finto):
+    autossl_finto["start_status"] = 0
+    with pytest.raises(RuntimeError, match="start_autossl_check"):
+        cs.run_autossl("lab")
+
+
+def test_autossl_credenziali_mancanti(autossl_finto, monkeypatch):
+    monkeypatch.setattr(cs, "CPANEL_API_TOKEN", None)
+    with pytest.raises(SystemExit, match="CPANEL_API_TOKEN"):
+        cs.run_autossl("lab", dry_run=True)
+    assert autossl_finto["chiamate"] == []

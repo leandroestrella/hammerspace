@@ -11,7 +11,7 @@ Automatizza la procedura descritta nella pagina Confluence "Subdomain":
      --with-dns-api solo se vuoi comunque creare un record dedicato via API -
      serve un account Namecheap che soddisfi i requisiti per l'API: saldo
      >= $50, 20+ domini, o $50 di acquisti negli ultimi 2 anni)
-  3. cPanel  -> SSL/TLS Status: avvia AutoSSL (richiede un token WHM, non solo cPanel utente)
+  3. cPanel  -> SSL/TLS Status: avvia AutoSSL (basta il token utente cPanel)
   4. cPanel  -> Domains: forza il redirect HTTPS (via .htaccess, vedi nota in fondo al file)
 
 Uso:
@@ -54,12 +54,6 @@ CPANEL_USER = os.environ.get("CPANEL_USER")             # utente cPanel
 CPANEL_API_TOKEN = os.environ.get("CPANEL_API_TOKEN")   # Security -> Manage API Tokens
 ROOT_DOMAIN = os.environ.get("ROOT_DOMAIN")   # es. tuodominio.com
 SERVER_IP = os.environ.get("SERVER_IP")        # IP a cui deve puntare il sottodominio
-
-# Facoltativo: serve solo per lo step AutoSSL, che è un'operazione a livello
-# WHM (server), non disponibile con il solo token utente cPanel.
-WHM_HOST = os.environ.get("WHM_HOST", CPANEL_HOST)
-WHM_USER = os.environ.get("WHM_USER", "root")
-WHM_API_TOKEN = os.environ.get("WHM_API_TOKEN")
 
 NAMECHEAP_API_USER = os.environ.get("NAMECHEAP_API_USER")
 NAMECHEAP_API_KEY = os.environ.get("NAMECHEAP_API_KEY")
@@ -479,37 +473,84 @@ def add_dns_record(subdomain, dry_run=False):
 
 
 # --------------------------------------------------------------------------- #
-# 3. cPanel/WHM: AutoSSL (WHM API1 start_autossl_check)
+# 3. cPanel: AutoSSL (UAPI SSL::start_autossl_check)
+#
+# Basta il token utente cPanel: la versione UAPI (porta 2083) avvia il
+# controllo AutoSSL per l'account. La versione WHM (porta 2087) chiedeva un
+# token root/reseller che non c'e', per questo lo step prima veniva saltato.
 # --------------------------------------------------------------------------- #
 
-def whm_headers():
-    return {"Authorization": f"whm {WHM_USER}:{WHM_API_TOKEN}"}
+AUTOSSL_POLL_SECONDS = 10
 
 
-def run_autossl(dry_run=False, wait_seconds=0):
-    if not WHM_API_TOKEN:
-        log(
-            "AutoSSL",
-            "WHM_API_TOKEN is not set: skipping this step (it needs a WHM/root token, "
-            "which is not the same thing as the cPanel user token - see .env.example).",
-        )
-        return False
-    url = f"https://{WHM_HOST}:2087/json-api/start_autossl_check"
-    params = {"user": CPANEL_USER, "api.version": 1}
+def problemi_autossl(righe, fqdn):
+    """Filtra i problemi di get_autossl_problems che riguardano fqdn.
+
+    Solo il nome esatto: www.<sottodominio> finisce sempre tra i problemi,
+    perche' un record wildcard "*" di un solo livello non lo fa risolvere,
+    ed e' rumore atteso, non un errore del sottodominio nuovo.
+    """
+    fqdn = fqdn.lower()
+    return [
+        r for r in (righe or [])
+        if str(r.get("domain", "")).lower() == fqdn
+    ]
+
+
+def _autossl_uapi(funzione, timeout=30):
+    url = f"https://{CPANEL_HOST}:2083/execute/SSL/{funzione}"
+    resp = requests.get(url, headers=cpanel_headers(), timeout=timeout)
+    data = resp.json()
+    if not data.get("status"):
+        raise RuntimeError(f"SSL::{funzione} failed: {data.get('errors')}")
+    return data.get("data")
+
+
+def run_autossl(subdomain, dry_run=False, wait_seconds=0):
+    require(
+        {
+            "CPANEL_HOST": CPANEL_HOST,
+            "CPANEL_USER": CPANEL_USER,
+            "CPANEL_API_TOKEN": CPANEL_API_TOKEN,
+            "ROOT_DOMAIN": ROOT_DOMAIN,
+        },
+        ["CPANEL_HOST", "CPANEL_USER", "CPANEL_API_TOKEN", "ROOT_DOMAIN"],
+    )
+    fqdn = f"{subdomain}.{ROOT_DOMAIN}"
+    url = f"https://{CPANEL_HOST}:2083/execute/SSL/start_autossl_check"
     log("AutoSSL", f"Starting AutoSSL for user {CPANEL_USER}")
     if dry_run:
-        log("AutoSSL", f"[dry-run] GET {url} params={params}")
+        log("AutoSSL", f"[dry-run] GET {url}")
+        if wait_seconds:
+            log("AutoSSL", f"[dry-run] would wait up to {wait_seconds}s, then read "
+                           f"SSL::get_autossl_problems for {fqdn}")
         return True
 
-    resp = requests.get(url, headers=whm_headers(), params=params, timeout=30)
-    data = resp.json()
-    if data.get("metadata", {}).get("result") != 1:
-        raise RuntimeError(f"start_autossl_check failed: {data.get('metadata')}")
-    log("AutoSSL", "AutoSSL check started. Certificate issuance is asynchronous: "
-                    "check WHM > SSL/TLS Status in a few minutes.")
-    if wait_seconds:
-        log("AutoSSL", f"Waiting {wait_seconds}s before continuing...")
-        time.sleep(wait_seconds)
+    _autossl_uapi("start_autossl_check")
+    if not wait_seconds:
+        log("AutoSSL", "AutoSSL check started. Certificate issuance is asynchronous: "
+                        "check cPanel > SSL/TLS Status in a few minutes.")
+        return True
+
+    # Il controllo gira sul server per tutto l'account: si aspetta che
+    # finisca, poi si leggono i problemi del solo sottodominio nuovo.
+    log("AutoSSL", f"AutoSSL check started. Waiting up to {wait_seconds}s for it to finish...")
+    scadenza = time.monotonic() + wait_seconds
+    while True:
+        time.sleep(min(AUTOSSL_POLL_SECONDS, max(0, scadenza - time.monotonic())))
+        if not _autossl_uapi("is_autossl_check_in_progress"):
+            break
+        if time.monotonic() >= scadenza:
+            log("AutoSSL", f"Still running after {wait_seconds}s: check cPanel > "
+                            "SSL/TLS Status later.")
+            return True
+
+    problemi = problemi_autossl(_autossl_uapi("get_autossl_problems"), fqdn)
+    if problemi:
+        for p in problemi:
+            log("AutoSSL", f"WARNING: {p.get('domain')}: {p.get('problem')}")
+        return False
+    log("AutoSSL", f"AutoSSL check finished with no problems reported for {fqdn}.")
     return True
 
 
@@ -881,7 +922,12 @@ def main():
     )
     parser.add_argument(
         "--skip-autossl", action="store_true",
-        help="Skip the AutoSSL trigger (it needs a WHM token).",
+        help="Skip the AutoSSL trigger.",
+    )
+    parser.add_argument(
+        "--autossl-wait", type=int, default=0, metavar="SECONDS",
+        help="Wait up to SECONDS for the AutoSSL check to finish, then report "
+             "any problem it found for the new subdomain (default: 0, don't wait).",
     )
     parser.add_argument(
         "--skip-https-redirect", action="store_true",
@@ -911,6 +957,8 @@ def main():
         parser.error("--with-files is only used together with --delete.")
     if args.purge and not args.with_files:
         parser.error("--purge is only used together with --with-files.")
+    if args.autossl_wait < 0:
+        parser.error("--autossl-wait cannot be negative.")
 
     if args.delete:
         # La docroot va letta PRIMA di rimuovere il sottodominio: dopo, cPanel
@@ -948,11 +996,6 @@ def main():
     else:
         log("Namecheap", "Step skipped: covered by the wildcard '*' record (use --with-dns-api to force it).")
 
-    if not args.skip_autossl:
-        run_autossl(dry_run=args.dry_run)
-    else:
-        log("AutoSSL", "Step skipped (--skip-autossl).")
-
     if not args.skip_https_redirect:
         force_https_redirect(subdomain, dry_run=args.dry_run)
     else:
@@ -970,6 +1013,13 @@ def main():
         aggiorna_app_urls_posthog(subdomain, dry_run=args.dry_run)
     else:
         log("PostHog", "Authorized URLs step skipped (--skip-posthog).")
+
+    # Per ultimo: cosi' AutoSSL valida il sottodominio con .htaccess e pagina
+    # iniziale gia' al loro posto, e l'eventuale attesa non ritarda nient'altro.
+    if not args.skip_autossl:
+        run_autossl(subdomain, dry_run=args.dry_run, wait_seconds=args.autossl_wait)
+    else:
+        log("AutoSSL", "Step skipped (--skip-autossl).")
 
     log("Done", f"Subdomain {subdomain}.{ROOT_DOMAIN} ready (or simulated, with --dry-run).")
 

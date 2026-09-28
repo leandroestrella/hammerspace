@@ -21,7 +21,8 @@ way to see a traceback in full).
 | `subdomain` | — | the name only, without the root domain: `lab`, not `lab.example.com` |
 | `dry_run` | off | prints every call it would make, touches nothing |
 | `with_dns_api` | off | also creates a dedicated namecheap a record — usually unnecessary, see [dns](#dns) |
-| `skip_autossl` | **on** | leaves ssl alone; on by default because autossl needs a whm token nobody has set yet |
+| `skip_autossl` | off | leaves ssl alone, see [ssl](#ssl) |
+| `autossl_wait` | `300` | seconds to wait for the autossl check to finish, then report any problem it found for the new subdomain. `0` starts it and moves on |
 | `skip_https_redirect` | off | skips writing the `.htaccess` redirect block |
 | `skip_starter_page` | off | skips writing a placeholder `index.html` that already carries the PostHog snippet; never overwrites an existing index |
 | `skip_posthog` | off | writes the starter page *without* the PostHog snippet, so the subdomain isn't tracked, and skips the authorized urls step. with `skip_starter_page` on there's no page at all |
@@ -98,7 +99,7 @@ document root first.
 creating and deleting are deliberately separate workflows in both pairs, so a
 destructive run is never one mis-clicked checkbox away from a routine one. the
 delete workflows also receive only the credentials they need — the subdomain one
-never sees the dns or whm secrets, and the teardown one never sees `SERVER_IP`.
+never sees the dns secrets, and the teardown one never sees `SERVER_IP`.
 
 ## from a terminal
 
@@ -165,7 +166,8 @@ the examples above cover the common paths; these are all of them.
 | `--with-files` | off | with `--delete`: also move the document root to `~/.trash` |
 | `--purge` | off | with `--with-files`: delete permanently instead of trashing |
 | `--with-dns-api` | off | create a dedicated namecheap a record — usually unnecessary, see [dns](#dns) |
-| `--skip-autossl` | off | skip the autossl trigger (the workflow passes it by default) |
+| `--skip-autossl` | off | skip the autossl trigger |
+| `--autossl-wait` | `0` | seconds to wait for the autossl check to finish, then report any problem it found for the new subdomain. `0` starts it and moves on |
 | `--skip-https-redirect` | off | skip writing the `.htaccess` redirect block |
 | `--skip-starter-page` | off | skip writing a placeholder `index.html` with the PostHog snippet; never overwrites an existing index anyway |
 | `--skip-posthog` | off | write the placeholder `index.html` without the PostHog snippet: the subdomain isn't tracked, and isn't added to PostHog's authorized urls |
@@ -210,15 +212,14 @@ neither is needed for a subdomain that `create_subdomain.py` made.
 1. **cpanel** — creates the subdomain with its document root at `~/<subdomain>`
    (one level above `public_html`, not inside it)
 2. **dns** — skipped by default, see below
-3. **autossl** — skipped by default, see [ssl](#ssl)
-4. **https redirect** — appends a `mod_rewrite` block to
+3. **https redirect** — appends a `mod_rewrite` block to
    `~/<subdomain>/.htaccess`, creating the file if it isn't there
-5. **starter page** — writes a minimal, noindex `index.html` carrying the
+4. **starter page** — writes a minimal, noindex `index.html` carrying the
    PostHog snippet to the document root, so the subdomain is tracked from its
    first minute. never overwrites an existing `index.html` or `index.php`; if
    it can't tell whether one exists, it stops rather than guess.
    `--skip-posthog` writes the same page without the snippet
-6. **PostHog authorized urls** — adds `https://<subdomain>.<root-domain>` to
+5. **PostHog authorized urls** — adds `https://<subdomain>.<root-domain>` to
    the project's `app_urls`, because web analytics only shows traffic from
    the domains listed there. it reads the list, appends, de-duplicates
    (ignoring a trailing `/` and case) and patches it back, leaving every
@@ -226,6 +227,8 @@ neither is needed for a subdomain that `create_subdomain.py` made.
    isn't set, and with `--skip-posthog`. an api error here is a warning, not a
    failure — the subdomain already exists — and says what to add by hand.
    `--delete` removes the url again as its last step, the same way
+6. **autossl** — starts the account's autossl check, last so it validates the
+   subdomain with the redirect and starter page already in place. see [ssl](#ssl)
 
 each step prints what it's doing with a `[step]` prefix, so a failed run tells
 you exactly how far it got.
@@ -345,8 +348,8 @@ way to check you typed the right name.
 ```
 [cPanel] [dry-run] GET https://host:2083/execute/SubDomain/addsubdomain params={'domain': 'lab', ...}
 [Namecheap] Step skipped: covered by the wildcard '*' record
-[AutoSSL] Step skipped (--skip-autossl).
 [HTTPS redirect] [dry-run] Would append to lab/.htaccess: ...
+[AutoSSL] [dry-run] GET https://host:2083/execute/SSL/start_autossl_check
 ```
 
 one consequence worth knowing: in a dry run the delete path can't show you the
@@ -374,15 +377,19 @@ if you ever do use it, check the domain's records before and after.
 
 ## ssl
 
-autossl needs a **whm** token — root or reseller level — which is a different
-thing from the cpanel user token everything else uses. until one exists,
-`skip_autossl` stays on by default and new subdomains are served the server's
-default certificate, so `https://<subdomain>` will show a certificate warning
-while plain `http://` correctly redirects.
+autossl runs with the same cpanel user token as everything else, through
+uapi's `SSL::start_autossl_check` — no whm token needed. it starts a check for
+the **whole account**; let's encrypt issuance is asynchronous, and until it
+lands `https://<subdomain>` shows a certificate warning while plain `http://`
+already redirects correctly.
 
-to enable it later: get a token from whm → development → manage api tokens, then
-set `WHM_HOST`, `WHM_USER` (the reseller's own username, **not** `root`) and
-`WHM_API_TOKEN`, and turn `skip_autossl` off.
+with `--autossl-wait` (the workflow's `autossl_wait`, 300 by default) the
+script polls `SSL::is_autossl_check_in_progress` until the check finishes, then
+reads `SSL::get_autossl_problems` and prints the ones for the new subdomain as
+warnings. `www.<subdomain>` always shows up there — a one-level `*` record
+doesn't make it resolve — so it's left out. a problem is a warning, not a
+failure: the subdomain exists either way. if the wait runs out, it says so and
+the check keeps going on the server.
 
 ## deleting: trash vs purge
 

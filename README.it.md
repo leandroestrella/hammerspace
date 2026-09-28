@@ -30,10 +30,9 @@ flowchart LR
     YOU[tu] -->|tab actions| GHA[github actions]
     YOU -->|terminale| CLI[gli script]
     GHA --> CLI
-    CLI -->|sottodominio, .htaccess, account ftp| UAPI[cpanel uapi]
+    CLI -->|sottodominio, .htaccess, autossl, account ftp| UAPI[cpanel uapi]
     CLI -->|cancella sottodominio e file| API2[cpanel api2]
     CLI -->|branch, secrets, workflow di deploy| GH[api github]
-    CLI -.->|autossl, opzionale| WHM[api whm]
     CLI -.->|record a, opzionale| NC[api namecheap]
     CLI -.->|authorized urls, opzionale| PH[api posthog]
     UAPI --> SRV[(il tuo server)]
@@ -50,7 +49,7 @@ cpanel](docs/cpanel-api.md) e le [note sull'api github](docs/github-api.md).
 
 | strumento | cosa fa |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https, scrive una pagina iniziale con PostHog già integrato (o senza, con `--skip-posthog`), e aggiunge il sottodominio agli authorized urls di PostHog perché web analytics lo mostri. opzionalmente avvia autossl e crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
+| [`create_subdomain.py`](./create_subdomain.py) | crea un sottodominio su cpanel, punta la document root a `~/<nome>`, forza il redirect https, scrive una pagina iniziale con PostHog già integrato (o senza, con `--skip-posthog`), aggiunge il sottodominio agli authorized urls di PostHog perché web analytics lo mostri, e avvia autossl. opzionalmente crea un record dns dedicato. lo cancella anche, con o senza i suoi file. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | collega un repo github a quel sottodominio: crea l'account ftp, scrive i tre secret `FTP_*` sul repo di destinazione e ci committa un workflow di deploy, così ogni push pubblica. smonta anche tutto quanto. |
 | [`setup_gitflow.py`](./setup_gitflow.py) | prepara un repo github per il [gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow): un commit iniziale se è vuoto, e un branch `develop` accanto a `master`. `setup_autodeploy.py` lo lancia da solo su un repo vuoto. |
 

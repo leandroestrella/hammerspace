@@ -28,10 +28,9 @@ flowchart LR
     YOU[you] -->|actions tab| GHA[github actions]
     YOU -->|terminal| CLI[the scripts]
     GHA --> CLI
-    CLI -->|subdomain, .htaccess, ftp account| UAPI[cpanel uapi]
+    CLI -->|subdomain, .htaccess, autossl, ftp account| UAPI[cpanel uapi]
     CLI -->|delete subdomain, delete files| API2[cpanel api2]
     CLI -->|branches, secrets, deploy workflow| GH[github api]
-    CLI -.->|autossl, optional| WHM[whm api]
     CLI -.->|a record, optional| NC[namecheap api]
     CLI -.->|authorized urls, optional| PH[posthog api]
     UAPI --> SRV[(your server)]
@@ -48,7 +47,7 @@ notes](docs/github-api.md).
 
 | tool | what it does |
 | --- | --- |
-| [`create_subdomain.py`](./create_subdomain.py) | creates a subdomain on cpanel, points its document root at `~/<name>`, forces an https redirect, drops a PostHog-instrumented starter page (or a plain one, with `--skip-posthog`), and adds the subdomain to PostHog's authorized urls so web analytics shows it. optionally triggers autossl and a dedicated dns record. deletes it again too, with or without its files. |
+| [`create_subdomain.py`](./create_subdomain.py) | creates a subdomain on cpanel, points its document root at `~/<name>`, forces an https redirect, drops a PostHog-instrumented starter page (or a plain one, with `--skip-posthog`), adds the subdomain to PostHog's authorized urls so web analytics shows it, and starts autossl. optionally creates a dedicated dns record. deletes it again too, with or without its files. |
 | [`setup_autodeploy.py`](./setup_autodeploy.py) | wires a github repo to that subdomain: creates the ftp account, writes the three `FTP_*` secrets on the target repo, and commits a deploy workflow so every push publishes. tears the whole thing down too. |
 | [`setup_gitflow.py`](./setup_gitflow.py) | readies a github repo for [gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow): an initial commit if it's empty, and a `develop` branch next to `master`. `setup_autodeploy.py` runs it by itself on an empty repo. |
 
