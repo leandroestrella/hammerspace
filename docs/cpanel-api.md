@@ -136,6 +136,15 @@ when idle), `SSL::get_autossl_problems` (rows of `domain`, `problem`, `time`,
 for the whole account), `SSL::get_autossl_excluded_domains` and
 `SSL::add_autossl_excluded_domains`.
 
+**don't start it right after creating the subdomain.** `addsubdomain` returns
+before apache serves the new name: for the next 20–30 seconds its requests
+still land on whatever answers undefined names (here the catch-all `*`). an
+autossl check started in that window fails http dcv with *"the web server
+responded with the following error: 404 (Not Found)"* and the certificate waits
+for the server's scheduled run. the same check started once the vhost answered
+issued the certificate in about a minute. `create_subdomain.py` waits for the
+vhost first.
+
 one thing autossl can't do here is a **wildcard**. let's encrypt only issues
 those through dns validation, and autossl only validates through dns for zones
 the server is authoritative for; with dns at the registrar it reports *"DNS

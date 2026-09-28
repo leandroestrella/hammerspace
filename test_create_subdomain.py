@@ -434,6 +434,7 @@ def autossl_finto(monkeypatch):
     monkeypatch.setattr(cs, "CPANEL_API_TOKEN", "token")
     monkeypatch.setattr(cs, "ROOT_DOMAIN", "leandroestrella.com")
     monkeypatch.setattr(cs.time, "sleep", lambda s: None)
+    monkeypatch.setattr(cs, "attendi_vhost", lambda fqdn: stato["chiamate"].append("vhost") or True)
 
     def get(url, headers, timeout):
         assert url.startswith("https://server.example.com:2083/execute/SSL/")
@@ -460,13 +461,14 @@ def test_autossl_dry_run_nessuna_chiamata(autossl_finto):
 
 def test_autossl_senza_attesa_solo_avvio(autossl_finto):
     assert cs.run_autossl("lab") is True
-    assert autossl_finto["chiamate"] == ["start_autossl_check"]
+    assert autossl_finto["chiamate"] == ["vhost", "start_autossl_check"]
 
 
 def test_autossl_attende_e_legge_i_problemi(autossl_finto):
     autossl_finto["problemi"] = [_problema("www.lab.leandroestrella.com")]
     assert cs.run_autossl("lab", wait_seconds=60) is True
     assert autossl_finto["chiamate"] == [
+        "vhost",
         "start_autossl_check",
         "is_autossl_check_in_progress",
         "is_autossl_check_in_progress",
@@ -491,3 +493,65 @@ def test_autossl_credenziali_mancanti(autossl_finto, monkeypatch):
     with pytest.raises(SystemExit, match="CPANEL_API_TOKEN"):
         cs.run_autossl("lab", dry_run=True)
     assert autossl_finto["chiamate"] == []
+
+
+def test_impronta_uguale_per_lo_stesso_vhost_di_ripiego():
+    # Il catch-all "*" risponde uguale a qualsiasi nome.
+    a = cs.impronta_http(302, "https://leandroestrella.com/", "<p>Found</p>", "lab.leandroestrella.com")
+    b = cs.impronta_http(302, "https://leandroestrella.com/", "<p>Found</p>", "x1.leandroestrella.com")
+    assert a == b
+
+
+def test_impronta_neutralizza_il_nome_dell_host():
+    # Un vhost che rimanda a se stesso resta riconoscibile a prescindere dal nome.
+    a = cs.impronta_http(301, "https://lab.leandroestrella.com/", "", "lab.leandroestrella.com")
+    b = cs.impronta_http(301, "https://x1.leandroestrella.com/", "", "x1.leandroestrella.com")
+    assert a == b
+
+
+def test_impronta_distingue_il_vhost_proprio():
+    ripiego = cs.impronta_http(302, "https://leandroestrella.com/", "", "x1.leandroestrella.com")
+    proprio = cs.impronta_http(301, "https://lab.leandroestrella.com/", "", "lab.leandroestrella.com")
+    assert ripiego != proprio
+
+
+def test_impronta_senza_location():
+    a = cs.impronta_http(200, None, "ciao", "lab.leandroestrella.com")
+    assert a[:2] == (200, "")
+
+
+@pytest.fixture
+def vhost_finto(monkeypatch):
+    """Il sottodominio risponde come il ripiego per le prime `ritardo` richieste."""
+    stato = {"ritardo": 2, "richieste": []}
+    monkeypatch.setattr(cs, "ROOT_DOMAIN", "leandroestrella.com")
+    monkeypatch.setattr(cs.time, "sleep", lambda s: None)
+
+    def get(url, allow_redirects, timeout):
+        assert allow_redirects is False
+        host = url.split("/")[2]
+        stato["richieste"].append(host)
+        risp = _Risposta(302, {})
+        risp.headers = {"Location": "https://leandroestrella.com/"}
+        if host == "lab.leandroestrella.com":
+            if stato["ritardo"] > 0:
+                stato["ritardo"] -= 1
+            else:
+                risp = _Risposta(301, {})
+                risp.headers = {"Location": "https://lab.leandroestrella.com/"}
+        risp.text = ""
+        return risp
+
+    monkeypatch.setattr(cs.requests, "get", get)
+    return stato
+
+
+def test_attende_il_vhost_proprio(vhost_finto):
+    assert cs.attendi_vhost("lab.leandroestrella.com") is True
+    assert vhost_finto["richieste"][0].startswith("hammerspace-probe-")
+    assert vhost_finto["richieste"][1:] == ["lab.leandroestrella.com"] * 3
+
+
+def test_vhost_mai_pronto_scade(vhost_finto):
+    vhost_finto["ritardo"] = 10**6
+    assert cs.attendi_vhost("lab.leandroestrella.com", attesa_max=0) is False

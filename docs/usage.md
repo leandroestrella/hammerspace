@@ -381,13 +381,24 @@ autossl runs with the same cpanel user token as everything else, through
 uapi's `SSL::start_autossl_check` — no whm token needed. it starts a check for
 the **whole account**; let's encrypt issuance is asynchronous, and until it
 lands `https://<subdomain>` shows a certificate warning while plain `http://`
-already redirects correctly.
+already redirects correctly. in the real run the certificate was there about a
+minute after creation.
+
+before starting it, the script waits (up to 180s) until the server answers for
+the new subdomain from **its own** virtual host. a fresh subdomain takes 20–30
+seconds to go live in apache, and until then the wildcard dns sends its
+requests to whatever serves undefined names — autossl's http validation gets a
+404 and the certificate slips to the server's next scheduled run. "its own" is
+judged against a made-up name under the same domain: as long as the subdomain
+answers exactly like that, it isn't live yet. dry runs skip the wait, like
+every other call.
 
 with `--autossl-wait` (the workflow's `autossl_wait`, 300 by default) the
 script polls `SSL::is_autossl_check_in_progress` until the check finishes, then
 reads `SSL::get_autossl_problems` and prints the ones for the new subdomain as
-warnings. `www.<subdomain>` always shows up there — a one-level `*` record
-doesn't make it resolve — so it's left out. a problem is a warning, not a
+warnings. `www.<subdomain>` is left out: the script never creates it, and the
+`*` record only resolves it when `<subdomain>` has no dns record of its own —
+a wildcard doesn't reach below a name that exists. a problem is a warning, not a
 failure: the subdomain exists either way. if the wait runs out, it says so and
 the check keeps going on the server.
 

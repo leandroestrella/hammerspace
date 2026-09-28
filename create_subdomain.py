@@ -36,9 +36,11 @@ nella stessa cartella). Non salvare mai le API key nel codice o in git.
 
 import argparse
 from pathlib import Path
+import hashlib
 import html
 import os
 import re
+import secrets
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -481,20 +483,64 @@ def add_dns_record(subdomain, dry_run=False):
 # --------------------------------------------------------------------------- #
 
 AUTOSSL_POLL_SECONDS = 10
+VHOST_ATTESA_MAX = 180
+VHOST_POLL_SECONDS = 5
 
 
 def problemi_autossl(righe, fqdn):
     """Filtra i problemi di get_autossl_problems che riguardano fqdn.
 
-    Solo il nome esatto: www.<sottodominio> finisce sempre tra i problemi,
-    perche' un record wildcard "*" di un solo livello non lo fa risolvere,
-    ed e' rumore atteso, non un errore del sottodominio nuovo.
+    Solo il nome esatto: www.<sottodominio> non e' affare di questo script.
+    Il wildcard "*" lo fa risolvere solo se <sottodominio> non ha un record
+    DNS suo (un wildcard non scende sotto un nome che esiste), quindi per i
+    sottodomini con un record dedicato e' tra i problemi da sempre.
     """
     fqdn = fqdn.lower()
     return [
         r for r in (righe or [])
         if str(r.get("domain", "")).lower() == fqdn
     ]
+
+
+def impronta_http(status, location, corpo, host):
+    """Riassume una risposta HTTP in modo confrontabile tra host diversi.
+
+    Il nome dell'host viene sostituito da un segnaposto, cosi' due risposte
+    dello stesso vhost a nomi diversi (es. il catch-all "*") risultano uguali.
+    """
+    def neutro(testo):
+        return (testo or "").replace(host, "{host}")
+    digest = hashlib.sha256(neutro(corpo).encode("utf-8", "replace")).hexdigest()
+    return (status, neutro(location), digest)
+
+
+def _impronta_di(host):
+    try:
+        resp = requests.get(f"http://{host}/", allow_redirects=False, timeout=10)
+    except requests.RequestException as e:
+        return ("errore", type(e).__name__, "")
+    return impronta_http(resp.status_code, resp.headers.get("Location"), resp.text, host)
+
+
+def attendi_vhost(fqdn, attesa_max=VHOST_ATTESA_MAX):
+    """Aspetta che Apache serva il sottodominio con il SUO vhost.
+
+    Verificato sul server: il vhost di un sottodominio appena creato risponde
+    dopo 20-30 secondi. Prima, con il DNS wildcard, la richiesta finisce al
+    vhost di ripiego (il catch-all "*" o quello di default del server), la
+    validazione HTTP di AutoSSL trova un 404 e il certificato slitta al giro
+    programmato del server. Il riferimento e' la risposta a un nome inventato:
+    finche' il sottodominio risponde allo stesso modo, non e' ancora suo.
+    """
+    finto = f"hammerspace-probe-{secrets.token_hex(4)}.{ROOT_DOMAIN}"
+    ripiego = _impronta_di(finto)
+    scadenza = time.monotonic() + attesa_max
+    while True:
+        if _impronta_di(fqdn) != ripiego:
+            return True
+        if time.monotonic() >= scadenza:
+            return False
+        time.sleep(VHOST_POLL_SECONDS)
 
 
 def _autossl_uapi(funzione, timeout=30):
@@ -520,12 +566,19 @@ def run_autossl(subdomain, dry_run=False, wait_seconds=0):
     url = f"https://{CPANEL_HOST}:2083/execute/SSL/start_autossl_check"
     log("AutoSSL", f"Starting AutoSSL for user {CPANEL_USER}")
     if dry_run:
+        log("AutoSSL", f"[dry-run] would first wait up to {VHOST_ATTESA_MAX}s for "
+                        f"{fqdn} to be served by its own virtual host")
         log("AutoSSL", f"[dry-run] GET {url}")
         if wait_seconds:
             log("AutoSSL", f"[dry-run] would wait up to {wait_seconds}s, then read "
                            f"SSL::get_autossl_problems for {fqdn}")
         return True
 
+    log("AutoSSL", f"Waiting for the server to serve {fqdn} from its own virtual host...")
+    if not attendi_vhost(fqdn):
+        log("AutoSSL", f"WARNING: {fqdn} still answers like an undefined name after "
+                        f"{VHOST_ATTESA_MAX}s: starting AutoSSL anyway, but its HTTP "
+                        "validation may fail until the server's next scheduled run.")
     _autossl_uapi("start_autossl_check")
     if not wait_seconds:
         log("AutoSSL", "AutoSSL check started. Certificate issuance is asynchronous: "
