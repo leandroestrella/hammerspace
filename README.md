@@ -109,6 +109,7 @@ every flag, and what each step actually does, in [usage](docs/usage.md).
 create_subdomain.py       the subdomain tool
 setup_autodeploy.py       the push-to-deploy tool
 setup_gitflow.py          the gitflow tool
+acme/                     wildcard certificate: acme.sh dns hook + setup, run on the server
 test_*.py                 tests for the pure functions
 .github/workflows/        one workflow per tool, plus a separate one for each delete
 docs/                     setup, usage, api notes, troubleshooting
@@ -122,6 +123,7 @@ assets/                   art, and the PostHog snippet baked into every starter 
 - [cpanel api notes](docs/cpanel-api.md) — the gaps and surprises that cost real time to find
 - [github api notes](docs/github-api.md) — sealed-box secrets, the scope everyone forgets, and why a 404 isn't a typo
 - [troubleshooting](docs/troubleshooting.md) — what to do when a run goes sideways
+- [wildcard certificate](docs/wildcard-certificate.md) — a real certificate for the `*` catch-all, renewed from inside cpanel, no token stored
 
 ## development
 

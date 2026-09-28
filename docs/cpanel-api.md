@@ -121,11 +121,66 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 `SSL::toggle_ssl_redirect_for_domains` shows up in third-party api docs as the
 likely real function, but it has never been tested here.
 
-## autossl needs a different token entirely
+## autossl: a user token can start it after all
 
-it's a whm (root/reseller) operation on port **2087**, not a cpanel user
-operation on 2083. a cpanel token will not authenticate it, no matter how it's
-formatted. see [setup](setup.md).
+`create_subdomain.py` starts autossl through whm's `start_autossl_check` on port
+**2087**, which does need a root/reseller token — a cpanel token won't
+authenticate there, no matter how it's formatted. see [setup](setup.md).
+
+but uapi has its own `SSL::start_autossl_check` on 2083, and an ordinary cpanel
+user token runs it for the account: verified, it returns `status: 1` and
+`SSL::get_autossl_problems` picks up a subdomain created two minutes earlier.
+switching the tool to it would drop the whm dependency. the rest of the family
+works with the same token: `SSL::is_autossl_check_in_progress`,
+`SSL::get_autossl_problems`, `SSL::get_autossl_excluded_domains` and
+`SSL::add_autossl_excluded_domains`.
+
+one thing autossl can't do here is a **wildcard**. let's encrypt only issues
+those through dns validation, and autossl only validates through dns for zones
+the server is authoritative for; with dns at the registrar it reports *"DNS
+DCV: No local authority"*. delegating just `_acme-challenge` to the server
+doesn't change its mind — it checks the domain itself. the way around it is in
+[wildcard certificate](wildcard-certificate.md).
+
+## restoring a certificate from the store
+
+every certificate the account has ever had stays in its store
+(`SSL::list_certs`), autossl's included, until someone deletes it. that makes
+undoing a bad install cheap: fetch the old certificate and install it again.
+`SSL::install_ssl` swaps atomically, so the site never goes without one.
+
+```
+SSL::show_cert id=<id>                          -> data.cert
+SSL::fetch_key_and_cabundle_for_certificate     -> data.key, data.cab
+SSL::install_ssl domain=<host> cert=... key=... cabundle=...
+```
+
+the catch: `fetch_key_and_cabundle_for_certificate` fails with *"getdomainip
+requires a domain"* when the certificate has **no common name** — which is the
+case for any hostname longer than 64 characters, since those can only go in the
+subject alternative names. pair it with its key by hand instead: `list_certs`
+and `SSL::list_keys` both return the rsa `modulus`, equal modulus means matching
+pair, and `SSL::show_key id=<id>` returns the key. the ca bundle can come from
+any other certificate by the same issuer.
+
+## running a command without ssh
+
+no shell on the account doesn't mean no way to run things: a cron entry is
+one. `Cron::add_line` (api2) with a job that runs every minute, read its output
+file with `Fileman::get_file_content`, then `Cron::remove_line` with the
+`linekey` that `add_line` returned. jobs run in cpanel's `jailshell` with
+`PATH=/usr/bin:/bin`; `git`, `curl`, `openssl`, `perl`, `uapi` and `cpapi2`
+were all there. make whatever you run safe to repeat, since it may fire more
+than once before the entry is gone.
+
+**a `%` in the command breaks it silently.** cron turns `%` into a newline and
+pipes everything after it to the command's stdin — the job runs, does
+something else, and the output file never appears. keep `printf` and friends
+in a script and have cron call the script.
+
+the command-line `uapi` and `cpapi2` take no token when run as the account
+user, which is what lets the [wildcard certificate](wildcard-certificate.md)
+dns hook edit the zone without storing credentials.
 
 ## the `Ftp` module is the exception to all of the above
 

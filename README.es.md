@@ -113,6 +113,7 @@ todos los flags, y lo que hace realmente cada paso, en [uso](docs/usage.md).
 create_subdomain.py       la herramienta de subdominios
 setup_autodeploy.py       la herramienta de despliegue desde git
 setup_gitflow.py          la herramienta de gitflow
+acme/                     certificado wildcard: hook dns para acme.sh + setup, corren en el servidor
 test_*.py                 tests de las funciones puras
 .github/workflows/        un workflow por herramienta, más uno aparte para cada borrado
 docs/                     setup, uso, notas de api, resolución de problemas
@@ -126,6 +127,7 @@ assets/                   gráficos, y el snippet de PostHog que lleva cada pág
 - [notas sobre la api de cpanel](docs/cpanel-api.md) — los huecos y las sorpresas que costaron tiempo de verdad
 - [notas sobre la api de github](docs/github-api.md) — secrets sellados, el scope que todo el mundo olvida, y por qué un 404 no es una errata
 - [resolución de problemas](docs/troubleshooting.md) — qué hacer cuando una ejecución se tuerce
+- [certificado wildcard](docs/wildcard-certificate.md) — un certificado de verdad para el catch-all `*`, renovado desde dentro de cpanel, sin guardar ningún token
 
 ## desarrollo
 
